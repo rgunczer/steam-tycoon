@@ -176,7 +176,9 @@ function material(color, metalness = 0.35, roughness = 0.48) {
 const iron = material(0x51575a, 0.69, 0.39);
 const castSteel = material(0x635e58, 0.5, 0.67);
 const bronze = material(0x946134, 0.69, 0.46);
-const gaugeRed = material(0x9c301d, 0.26, 0.46);
+const gaugeRed = new THREE.MeshStandardMaterial({
+  color: 0xc62916, emissive: 0x7b180a, emissiveIntensity: 0.38, roughness: 0.55,
+});
 const frame = material(0x584236, 0.54, 0.64);
 const dark = material(0x171c1b, 0.2);
 const brass = material(0xc99654, 0.72, 0.33);
@@ -409,7 +411,7 @@ function buildLevel(definition) {
   cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.28, 0);
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.59, 0);
-  const gaugeNeedle = mountBoilerGauge(boiler);
+  const gaugeNeedle = mountBoilerGauge(boiler, definition.view[0]);
   mesh(new THREE.TorusGeometry(0.097, 0.012, 8, 22), bronze, boiler, 0, 0.962, 0).rotation.x = Math.PI / 2;
   box(boiler, brass, 0.144, 0.016, 0.019, 0, 0.962, 0);
   box(boiler, brass, 0.019, 0.016, 0.144, 0, 0.962, 0);
@@ -467,28 +469,32 @@ function makeGaugeFace() {
 
 const gaugeFace = makeGaugeFace();
 
-function mountBoilerGauge(boiler) {
+function mountBoilerGauge(boiler, heading) {
   const gauge = new THREE.Group();
-  gauge.position.set(0, 0.80, 0.415);
-  gauge.rotation.x = -0.52;
+  gauge.position.set(0, 0.825, 0.438);
+  gauge.rotation.set(-0.72, THREE.MathUtils.degToRad(heading * 0.48), 0, 'YXZ');
   boiler.add(gauge);
 
   // The pressure tap starts inside the boiler and the union meets the back of the dial.
   cylinder(boiler, bronze, 0.052, 0.14, 0, 0.642, 0.309, 'z');
-  const stem = cylinder(boiler, brass, 0.033, 0.182, 0, 0.716, 0.367);
+  const stem = cylinder(boiler, brass, 0.033, 0.208, 0, 0.726, 0.374);
   stem.rotation.x = 0.39;
   cylinder(gauge, iron, 0.107, 0.098, 0, 0, -0.039, 'z');
-  cylinder(gauge, bronze, 0.180, 0.074, 0, 0, 0, 'z');
-  mesh(new THREE.CircleGeometry(0.156, 40), gaugeFace, gauge, 0, 0, 0.039);
-  mesh(new THREE.TorusGeometry(0.164, 0.014, 8, 32), brass, gauge, 0, 0, 0.044);
-  for (const x of [-0.126, 0.126]) {
-    const screw = cylinder(gauge, bronze, 0.011, 0.006, x, -0.021, 0.043, 'z');
+  cylinder(gauge, bronze, 0.226, 0.074, 0, 0, 0, 'z');
+  mesh(new THREE.CircleGeometry(0.205, 40), gaugeFace, gauge, 0, 0, 0.039);
+  mesh(new THREE.TorusGeometry(0.213, 0.014, 8, 32), brass, gauge, 0, 0, 0.044);
+  for (const x of [-0.172, 0.172]) {
+    const screw = cylinder(gauge, bronze, 0.011, 0.006, x, -0.025, 0.043, 'z');
     screw.castShadow = false;
   }
   const needle = new THREE.Group();
   gauge.add(needle);
-  box(needle, gaugeRed, 0.010, 0.125, 0.006, 0, 0.043, 0.051);
-  cylinder(gauge, brass, 0.013, 0.012, 0, 0, 0.053, 'z');
+  const pointer = new THREE.Shape().moveTo(-0.018, -0.032)
+    .lineTo(0.018, -0.032).lineTo(0.014, 0.127).lineTo(0, 0.176)
+    .lineTo(-0.014, 0.127).closePath();
+  const hand = mesh(new THREE.ShapeGeometry(pointer), gaugeRed, needle, 0, 0, 0.058);
+  hand.castShadow = false;
+  cylinder(gauge, brass, 0.018, 0.014, 0, 0, 0.061, 'z');
   return needle;
 }
 
@@ -906,23 +912,34 @@ function animateMachine(dt) {
 }
 
 let gaugeTime = 0;
-function animateGauge(dt) {
+function animateGauge(elapsed) {
   const target = level.targetPressure;
-  if (reducedMotion.matches) {
+  const moving = !reducedMotion.matches;
+  if (moving) {
+    // Advance the damped spring in real time, even when a frame takes longer to render.
+    const damping = 1.25;
+    const frequency = 1.48;
+    const offset = level.pressure - target;
+    const sineWeight = (level.pressureVelocity + damping * offset) / frequency;
+    const sine = Math.sin(frequency * elapsed);
+    const cosine = Math.cos(frequency * elapsed);
+    const decay = Math.exp(-damping * elapsed);
+    const wave = offset * cosine + sineWeight * sine;
+    level.pressure = target + decay * wave;
+    level.pressureVelocity = decay * (frequency * (sineWeight * cosine - offset * sine) - damping * wave);
+    gaugeTime += elapsed;
+  } else {
     level.pressure = target;
     level.pressureVelocity = 0;
-  } else {
-    // A damped spring models the needle's inertia and slightly overshoots during a pressure change.
-    const acceleration = 15 * (target - level.pressure) - 5.3 * level.pressureVelocity;
-    level.pressureVelocity += acceleration * dt;
-    level.pressure += level.pressureVelocity * dt;
-    gaugeTime += dt;
   }
-  const ripple = reducedMotion.matches ? 0 : Math.sin(gaugeTime * 7.8) * 0.36 + Math.sin(gaugeTime * 12.1) * 0.12;
-  const reading = THREE.MathUtils.clamp(level.pressure, 0, 100) + ripple * Math.min(1, target / 20);
-  const angle = -120 + 2.4 * reading;
-  level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(angle);
-  pressureHand.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+
+  const flutter = moving
+    ? (Math.sin(gaugeTime * 5.4) * 11 + Math.sin(gaugeTime * 8.7) * 2) * Math.min(1, target / 19)
+    : 0;
+  // Leave room past the last tick so the needle can rebound at full pressure.
+  const sweep = -120 + 2.4 * THREE.MathUtils.clamp(level.pressure, -3, 103);
+  level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter);
+  pressureHand.style.transform = `rotate(${(sweep + flutter * 0.19).toFixed(2)}deg)`;
 }
 
 function boxCorners({ min, max }) {
@@ -1084,10 +1101,11 @@ selectLevel(Number(levelSelect.value));
 new ResizeObserver(resize).observe(stage);
 let previous = performance.now();
 renderer.setAnimationLoop(now => {
-  const dt = Math.min((now - previous) / 1000, 0.05);
+  const elapsed = Math.max(0, (now - previous) / 1000);
+  const dt = Math.min(elapsed, 0.05);
   previous = now;
   animateMachine(dt);
-  animateGauge(dt);
+  animateGauge(elapsed);
   animateSteam(dt);
   renderer.render(scene, camera);
 });
