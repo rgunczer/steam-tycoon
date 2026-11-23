@@ -27,13 +27,38 @@ button, select {
 button:hover { background: #303d37; }
 button:focus-visible, select:focus-visible, #stage:focus-visible { outline: 2px solid #80d6c1; outline-offset: 3px; }
 button[aria-pressed="true"] { border-color: #89c6b4; background: #29423a; color: #e0fff3; }
-#workshop { position: relative; border: 1px solid #394842; border-radius: 14px; background: radial-gradient(ellipse at 19% 0%, #634535, transparent 62%), radial-gradient(ellipse at 91% 13%, #24423f, #171c18 61%, #111512); }
-#stage { height: clamp(345px, 63vh, 690px); border-radius: inherit; }
+#workshop {
+  position: relative;
+  border: 1px solid #4b4d40;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 20% 15%, #60422f, transparent 62%),
+    radial-gradient(ellipse at 90% 20%, #29423e, #181e19 65%, #101411);
+  box-shadow: 0 18px 55px #080a08a6, inset 0 0 0 1px #121510;
+}
+#stage { height: clamp(325px, 57vh, 660px); border-radius: inherit; }
 canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; border-radius: inherit; }
-.readout, .legend { position: absolute; left: 16px; pointer-events: none; color: #dcd9c8; font-size: .78rem; }
-.readout { top: 14px; display: flex; align-items: center; gap: 8px; background: #101815e8; padding: 7px 11px; border-radius: 6px; }
+.workshop-instruments {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 86px;
+  padding: 4px 14px;
+  border-bottom: 1px solid #403e32;
+  border-radius: 13px 13px 0 0;
+  background: linear-gradient(#292a21, #181e19);
+}
+.pressure { display: flex; flex: none; gap: 8px; align-items: center; }
+.pressure svg { display: block; width: 86px; }
+.pressure-label { color: #d9be94; font-size: .72rem; text-align: right; }
+.pressure-label strong { display: block; color: #ffebc7; font: 600 1.65rem Georgia, serif; }
+#pressure-hand { transform-origin: 52px 46px; transform: rotate(-120deg); transition: transform .38s ease-out; }
+@media (prefers-reduced-motion: reduce) { #pressure-hand { transition: none; } }
+.legend { position: absolute; left: 16px; pointer-events: none; color: #dcd9c8; font-size: .78rem; }
+.readout { display: flex; align-items: center; gap: 8px; background: #101815e8; padding: 7px 11px; border-radius: 6px; color: #dcd9c8; font-size: .78rem; }
 .readout p { margin: 0; }
-.indicator { width: 7px; height: 7px; border-radius: 50%; background: #e9ab58; box-shadow: 0 0 8px #e9ab58; }
+.indicator { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #e9ab58; box-shadow: 0 0 8px #e9ab58; }
 .powered .indicator { background: #8ce2b1; box-shadow: 0 0 8px #8ce2b1; }
 .legend { bottom: 13px; display: flex; gap: 14px; }
 .legend > span:first-child { color: #edbb73; }
@@ -45,8 +70,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
 .tools span { color: #e6b979; margin-right: 4px; }
 @media (max-width: 560px) {
   header { gap: 8px; }
-  #stage { height: clamp(345px, 57vh, 530px); }
-  .legend { bottom: 10px; }
+  #stage { height: clamp(315px, 50vh, 475px); }
+  .workshop-instruments { min-height: 71px; padding-inline: 9px; }
+  .pressure { gap: 2px; }
+  .pressure svg { width: 67px; }
+  .pressure-label { font-size: .64rem; }
+  .pressure-label strong { font-size: 1.3rem; }
 }
 
 .view-controls {

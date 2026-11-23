@@ -2,14 +2,14 @@ import * as THREE from "./vendor/three.module.min.js";
 
 const size = 6;
 const levels = [
-  { name: 'Flywheel', action: 'spinning', source: [0, 4], destination: [5, 1],
+  { name: 'Flywheel', view: [42, 50], action: 'spinning', source: [0, 4], destination: [5, 1],
     obstacles: [[3, 4], [3, 2], [4, 3]], build: buildFlywheel },
-  { name: 'Ventilation fan', action: 'ventilating', source: [0, 1], destination: [5, 4],
+  { name: 'Ventilation fan', view: [-39, 54], action: 'ventilating', source: [0, 1], destination: [5, 4],
     obstacles: [[3, 0], [3, 1], [3, 2], [3, 3], [3, 5], [1, 3]], build: buildFan },
-  { name: 'Steam press', action: 'stamping', source: [0, 5], destination: [5, 0],
+  { name: 'Steam press', view: [44, 53], action: 'stamping', source: [0, 5], destination: [5, 0],
     obstacles: [[3, 5], [2, 3], [2, 2], [4, 4], [4, 3], [4, 2], [4, 1]], build: buildPress },
   {
-    name: 'Split shift', source: [0, 2], junctions: ['tee'],
+    name: 'Split shift', view: [-42, 57], source: [0, 2], junctions: ['tee'],
     obstacles: [[2, 1], [3, 3], [4, 3], [1, 4], [3, 5]],
     fixed: [[3, 2, 'straight', 0], [2, 4, 'elbow', 3]],
     receivers: [
@@ -18,7 +18,7 @@ const levels = [
     ],
   },
   {
-    name: 'Cross pressure', source: [0, 2], junctions: ['tee', 'cross'],
+    name: 'Cross pressure', view: [40, 59], source: [0, 2], junctions: ['tee', 'cross'],
     obstacles: [[1, 1], [1, 3], [3, 0], [3, 3], [4, 3], [3, 5]],
     fixed: [[2, 1, 'elbow', 0], [3, 2, 'straight', 0], [2, 3, 'straight', 1], [3, 4, 'straight', 0]],
     receivers: [
@@ -28,7 +28,7 @@ const levels = [
     ],
   },
   {
-    name: 'Factory manifold', source: [0, 3], junctions: ['tee', 'cross'],
+    name: 'Factory manifold', view: [-44, 61], source: [0, 3], junctions: ['tee', 'cross'],
     obstacles: [[1, 2], [1, 4], [3, 2], [4, 2], [4, 4], [2, 0], [4, 0]],
     fixed: [[2, 2, 'straight', 1], [3, 1, 'straight', 0], [4, 3, 'straight', 0],
       [3, 5, 'elbow', 3], [2, 4, 'straight', 1]],
@@ -51,6 +51,9 @@ const pipeHeight = 0.27;
 const stage = document.querySelector('#stage');
 const workshop = document.querySelector('#workshop');
 const status = document.querySelector('#status');
+const pressureMeter = document.querySelector('#pressure');
+const pressureReadout = document.querySelector('#pressure-value');
+const pressureHand = document.querySelector('#pressure-hand');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 40);
@@ -59,18 +62,18 @@ let viewTurns = 0;
 let overhead = false;
 
 function aimCamera() {
-  const azimuth = viewTurns * Math.PI / 2;
-  const elevation = overhead ? Math.PI / 2 - 0.0001 : Math.PI * 0.28;
+  const [heading, tilt] = level.view;
+  const azimuth = THREE.MathUtils.degToRad(viewTurns * 90 + (overhead ? 0 : heading));
+  const elevation = THREE.MathUtils.degToRad(overhead ? 89.99 : tilt);
   camera.position.set(
     Math.sin(azimuth) * Math.cos(elevation) * viewDistance,
     Math.sin(elevation) * viewDistance,
     Math.cos(azimuth) * Math.cos(elevation) * viewDistance,
   );
-  camera.lookAt(0, overhead ? 0 : -0.18, 0);
+  camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld();
 }
 
-aimCamera();
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -120,6 +123,8 @@ function material(color, metalness = 0.35, roughness = 0.48) {
 const iron = material(0x51575a, 0.69, 0.39);
 const castSteel = material(0x635e58, 0.5, 0.67);
 const bronze = material(0x946134, 0.69, 0.46);
+const ivory = material(0xead1a2, 0.08, 0.63);
+const gaugeRed = material(0x9c301d, 0.26, 0.46);
 const frame = material(0x584236, 0.54, 0.64);
 const dark = material(0x171c1b, 0.2);
 const brass = material(0xc99654, 0.72, 0.33);
@@ -277,19 +282,34 @@ function buildLevel(definition) {
   cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.28, 0);
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.59, 0);
-  cylinder(boiler, brass, 0.094, 0.06, 0, 0.55, 0.318, 'z');
-  cylinder(boiler, material(0xe9d4a7, 0.1), 0.075, 0.01, 0, 0.55, 0.353, 'z');
-  box(boiler, dark, 0.013, 0.09, 0.006, 0, 0.558, 0.36).rotation.z = -0.6;
+  const gauge = new THREE.Group();
+  gauge.position.set(0, 0.59, 0.34);
+  gauge.rotation.x = -0.44;
+  boiler.add(gauge);
+  cylinder(gauge, bronze, 0.193, 0.092, 0, 0, 0, 'z');
+  cylinder(gauge, ivory, 0.164, 0.01, 0, 0, 0.048, 'z');
+  mesh(new THREE.TorusGeometry(0.176, 0.015, 8, 26), brass, gauge, 0, 0, 0.05);
+  for (let i = 0; i <= 8; i++) {
+    const angle = THREE.MathUtils.degToRad(-120 + i * 30);
+    const tick = box(gauge, dark, 0.008, i % 2 === 0 ? 0.025 : 0.014, 0.004,
+      Math.sin(angle) * 0.136, Math.cos(angle) * 0.136, 0.056);
+    tick.rotation.z = -angle;
+  }
+  const gaugeNeedle = new THREE.Group();
+  gauge.add(gaugeNeedle);
+  box(gaugeNeedle, gaugeRed, 0.012, 0.125, 0.006, 0, 0.047, 0.061);
+  cylinder(gauge, bronze, 0.016, 0.019, 0, 0, 0.061, 'z');
 
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
-    ...definition, group,
+    ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0,
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build),
     ])),
     sourceKey: key(...definition.source),
     blocked: new Set(definition.obstacles.map(position => key(...position))),
     pipes: new Map(),
+    fixtureBounds: group.children.flatMap(fixture => boxCorners(new THREE.Box3().setFromObject(fixture))),
   };
 }
 
@@ -488,6 +508,11 @@ function updateFlow() {
     machine.lampLight.intensity = machine.powered ? 1.75 : 0;
   }
   powered = supplied === level.machines.size && leakCount === 0;
+  const supply = supplied / level.machines.size;
+  level.targetPressure = Math.round((35 + 65 * supply) / (1 + 0.85 * leakCount));
+  pressureMeter.setAttribute('aria-valuenow', String(level.targetPressure));
+  pressureReadout.textContent = `${level.targetPressure}%`;
+  pressureHand.style.transform = `rotate(${-120 + 2.4 * level.targetPressure}deg)`;
   outlets = leaks;
   for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
@@ -664,16 +689,47 @@ function animateMachine(dt) {
     machine.phase += machine.speed * dt;
     machine.animate(machine.phase);
   }
+  level.pressure = THREE.MathUtils.damp(level.pressure, level.targetPressure, 5, dt);
+  level.gaugeNeedle.rotation.z = THREE.MathUtils.degToRad(120 - 2.4 * level.pressure);
 }
+
+function boxCorners({ min, max }) {
+  return [min.x, max.x].flatMap(x => [min.y, max.y].flatMap(y =>
+    [min.z, max.z].map(z => new THREE.Vector3(x, y, z)),
+  ));
+}
+
+const boardBounds = boxCorners({
+  min: new THREE.Vector3(-3.4, -0.91, -3.4),
+  max: new THREE.Vector3(3.4, 0.04, 3.4),
+});
+const cameraPoint = new THREE.Vector3();
 
 function resize() {
   const { clientWidth: width, clientHeight: height } = stage;
-  const aspect = width / Math.max(height, 1);
-  const boardWidth = overhead ? 7.45 : 8.1;
-  const viewHeight = Math.max(7.6, boardWidth / aspect);
+  const aspect = Math.max(width, 1) / Math.max(height, 1);
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = Infinity;
+  let top = -Infinity;
+  for (const corner of [...boardBounds, ...level.fixtureBounds]) {
+    cameraPoint.copy(corner).applyMatrix4(camera.matrixWorldInverse);
+    const x = cameraPoint.x / -cameraPoint.z;
+    const y = cameraPoint.y / -cameraPoint.z;
+    left = Math.min(left, x);
+    right = Math.max(right, x);
+    bottom = Math.min(bottom, y);
+    top = Math.max(top, y);
+  }
+  const halfHeight = Math.max((top - bottom) / 1.72, (right - left) / (1.84 * aspect));
   camera.aspect = aspect;
-  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(viewHeight / (2 * viewDistance)));
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight));
   camera.updateProjectionMatrix();
+  // Center the projected board, including the tall fixtures and the front edge.
+  const projection = camera.projectionMatrix.elements;
+  projection[8] = (left + right) / (2 * halfHeight * aspect);
+  projection[9] = (bottom + top) / (2 * halfHeight);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   renderer.setSize(width, height, false);
 }
 
@@ -719,6 +775,9 @@ function selectLevel(index) {
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
   level.group.visible = true;
+  viewTurns = 0;
+  overhead = false;
+  updateView();
   const advanced = level.machines.size > 1;
   document.querySelector('#receiver-name').textContent = advanced ? 'Machines' : level.name;
   document.querySelector('#fixed-legend').hidden = !advanced;
@@ -740,9 +799,8 @@ document.querySelector('#reset').addEventListener('click', () => {
   reset();
   clearSteamAndSelection();
 });
-new ResizeObserver(resize).observe(stage);
-resize();
 selectLevel(Number(levelSelect.value));
+new ResizeObserver(resize).observe(stage);
 let previous = performance.now();
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - previous) / 1000, 0.05);
