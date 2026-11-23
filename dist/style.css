@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #101715;
+  color: #eee7d7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1140px; margin: auto; padding: clamp(16px, 4vw, 42px); }
+header, .controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+header { margin-bottom: 20px; }
+.eyebrow { color: #c6a26f; letter-spacing: .2em; font-size: .67rem; font-weight: 700; margin: 0 0 5px; }
+h1 { font-family: Georgia, serif; font-size: clamp(2rem, 5vw, 3.7rem); font-weight: 500; line-height: 1; margin: 0; }
+button {
+  font: inherit;
+  font-size: .88rem;
+  color: inherit;
+  border: 1px solid #48504a;
+  border-radius: 7px;
+  background: #222b27;
+  padding: 10px 13px;
+  min-height: 44px;
+  cursor: pointer;
+}
+button:hover { background: #303d37; }
+button:focus-visible, #stage:focus-visible { outline: 2px solid #80d6c1; outline-offset: 3px; }
+button[aria-pressed="true"] { border-color: #89c6b4; background: #29423a; color: #e0fff3; }
+#workshop { position: relative; border: 1px solid #394842; border-radius: 14px; background: radial-gradient(ellipse at 30% 30%, #34312a, #152420 68%, #101916); }
+#stage { height: clamp(345px, 63vh, 690px); border-radius: inherit; }
+canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; border-radius: inherit; }
+.readout, .legend { position: absolute; left: 16px; pointer-events: none; color: #dcd9c8; font-size: .78rem; }
+.readout { top: 14px; display: flex; align-items: center; gap: 8px; background: #101815e8; padding: 7px 11px; border-radius: 6px; }
+.readout p { margin: 0; }
+.indicator { width: 7px; height: 7px; border-radius: 50%; background: #e9ab58; box-shadow: 0 0 8px #e9ab58; }
+.powered .indicator { background: #8ce2b1; box-shadow: 0 0 8px #8ce2b1; }
+.legend { bottom: 13px; display: flex; gap: 14px; }
+.legend span:first-child { color: #edbb73; }
+.legend span:last-child { color: #a6d6c3; }
+.controls { margin-top: 16px; flex-wrap: wrap; }
+.instructions h2 { margin: 0 0 4px; font-size: 1rem; }
+.instructions p { margin: 0; font-size: .86rem; color: #bbbfb4; }
+.tools { display: flex; gap: 7px; flex-wrap: wrap; }
+.tools span { color: #e6b979; margin-right: 4px; }
+@media (max-width: 560px) {
+  header { gap: 8px; }
+  #stage { height: clamp(345px, 57vh, 530px); }
+  .legend { bottom: 10px; }
+}

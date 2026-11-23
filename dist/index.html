@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101715">
+  <title>Steam Tycoon</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">THE PIPE WORKSHOP</p><h1>Steam Tycoon</h1></div>
+      <button id="reset" type="button">Reset board</button>
+    </header>
+    <section id="workshop" aria-label="Steam pipe puzzle">
+      <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate a tile, and Delete to remove a pipe."></div>
+      <div class="readout">
+        <span class="indicator"></span>
+        <p id="status" role="status">Boiler on · Flywheel idle</p>
+      </div>
+      <div class="legend"><span>● Boiler</span><span>◉ Flywheel</span></div>
+    </section>
+    <section class="controls" aria-label="Pipe tools">
+      <div class="instructions"><h2>Build a steam line</h2><p>Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
+      <div class="tools" role="group" aria-label="Select a tool">
+        <button type="button" data-tool="straight" aria-pressed="true"><span aria-hidden="true">━</span> Straight</button>
+        <button type="button" data-tool="elbow" aria-pressed="false"><span aria-hidden="true">┗</span> Elbow</button>
+        <button type="button" data-tool="remove" aria-pressed="false"><span aria-hidden="true">×</span> Remove</button>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import('./game.js').catch(error => {
+      console.error(error);
+      document.querySelector('#status').textContent = 'The 3D board could not load. Check WebGL and reload.';
+    });
+  </script>
+</body>
+</html>
