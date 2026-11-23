@@ -106,6 +106,7 @@ const status = document.querySelector('#status');
 const pressureMeter = document.querySelector('#pressure');
 const pressureReadout = document.querySelector('#pressure-value');
 const pressureHand = document.querySelector('#pressure-hand');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 40);
@@ -175,7 +176,6 @@ function material(color, metalness = 0.35, roughness = 0.48) {
 const iron = material(0x51575a, 0.69, 0.39);
 const castSteel = material(0x635e58, 0.5, 0.67);
 const bronze = material(0x946134, 0.69, 0.46);
-const ivory = material(0xead1a2, 0.08, 0.63);
 const gaugeRed = material(0x9c301d, 0.26, 0.46);
 const frame = material(0x584236, 0.54, 0.64);
 const dark = material(0x171c1b, 0.2);
@@ -263,31 +263,81 @@ for (const x of [-3.19, 3.19]) {
 }
 
 const tiles = [];
-const grainSize = 128;
-const grainPixels = new Uint8Array(grainSize * grainSize * 4);
-let seed = 714;
-for (let i = 0; i < grainPixels.length; i += 4) {
-  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-  const x = (i / 4) % grainSize;
-  const y = Math.floor(i / 4 / grainSize);
-  const wear = 11 * Math.sin(x * 0.21 + Math.cos(y * 0.12)) + 7 * Math.cos(y * 0.31 + x * 0.17);
-  const shade = 191 + (seed >>> 27) + wear;
-  grainPixels.set([shade, shade, shade, 255], i);
-}
-const grain = new THREE.DataTexture(grainPixels, grainSize, grainSize);
-grain.magFilter = THREE.LinearFilter;
-grain.minFilter = THREE.LinearMipmapLinearFilter;
-grain.generateMipmaps = true;
-grain.needsUpdate = true;
+const textureSize = 128;
 
-const tileFinishes = [0x585552, 0x4e4d48, 0x565450, 0x4c4b48].map(color => material(color, 0.23, 0.81));
-for (const finish of tileFinishes) {
-  finish.map = grain;
-  finish.bumpMap = grain;
-  finish.bumpScale = 0.012;
+function randomTextureSample() {
+  let seed = 1837;
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
 }
-frame.roughnessMap = grain;
-iron.roughnessMap = grain;
+
+// A repeating noise field gives the castings uneven wear even when the UVs span several tiles.
+function noiseField(columns, rows, random) {
+  const grid = Array.from({ length: columns * rows }, random);
+  return (u, v) => {
+    const x = u * columns;
+    const y = v * rows;
+    const col = Math.floor(x);
+    const row = Math.floor(y);
+    const fx = x - col;
+    const fy = y - row;
+    const tx = fx * fx * (3 - 2 * fx);
+    const ty = fy * fy * (3 - 2 * fy);
+    const a = grid[row * columns + col];
+    const b = grid[row * columns + (col + 1) % columns];
+    const c = grid[((row + 1) % rows) * columns + col];
+    const d = grid[((row + 1) % rows) * columns + (col + 1) % columns];
+    return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, tx), THREE.MathUtils.lerp(c, d, tx), ty);
+  };
+}
+
+function surfaceTexture(kind) {
+  const random = randomTextureSample();
+  const wear = noiseField(7, 7, random);
+  const grain = kind === 'brushed' ? noiseField(3, 53, random) : noiseField(42, 42, random);
+  const pixels = new Uint8Array(textureSize * textureSize * 4);
+  for (let y = 0; y < textureSize; y++) {
+    for (let x = 0; x < textureSize; x++) {
+      const u = x / textureSize;
+      const v = y / textureSize;
+      const tarnish = wear(u, v);
+      const tooth = grain(u, v);
+      const speck = random();
+      const shade = kind === 'enamel'
+        ? 211 + 31 * tarnish + 10 * tooth - (speck < 0.018 ? 70 : 0)
+        : 195 + 36 * tarnish + 20 * tooth - (speck < 0.05 ? 47 : 0);
+      const warmth = (1 - tarnish) * 11;
+      const i = (y * textureSize + x) * 4;
+      pixels.set([Math.min(255, shade + warmth), shade, shade - warmth, 255], i);
+    }
+  }
+  const albedo = new THREE.DataTexture(pixels, textureSize, textureSize);
+  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
+  albedo.magFilter = THREE.LinearFilter;
+  albedo.minFilter = THREE.LinearMipmapLinearFilter;
+  albedo.generateMipmaps = true;
+  albedo.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const relief = albedo.clone();
+  albedo.colorSpace = THREE.SRGBColorSpace;
+  albedo.needsUpdate = relief.needsUpdate = true;
+  return { map: albedo, bumpMap: relief, roughnessMap: relief };
+}
+
+const castTexture = surfaceTexture('cast');
+const brushedTexture = surfaceTexture('brushed');
+const enamelTexture = surfaceTexture('enamel');
+const tileFinishes = [0x655c52, 0x5a5753, 0x635b54, 0x57544e].map(color => material(color, 0.23, 0.81));
+for (const finish of [...tileFinishes, frame, deckFinish, wallFinish, platformFinish, castSteel]) {
+  Object.assign(finish, castTexture, { bumpScale: 0.022 });
+}
+for (const finish of [iron, bronze, brass, collarActive, riserFinish]) {
+  Object.assign(finish, brushedTexture, { bumpScale: 0.009 });
+}
+for (const finish of [teal, fixedPipeFinish]) {
+  Object.assign(finish, enamelTexture, { bumpScale: 0.012 });
+}
 const tileShape = new THREE.Shape().moveTo(-0.46, -0.46).lineTo(0.46, -0.46)
   .lineTo(0.46, 0.46).lineTo(-0.46, 0.46).closePath();
 const tileGeometry = new THREE.ExtrudeGeometry(tileShape, {
@@ -302,6 +352,7 @@ for (let i = 0; i < tilePositions.count; i++) {
 for (let z = 0; z < size; z++) {
   for (let x = 0; x < size; x++) {
     const tile = mesh(tileGeometry, tileFinishes[(x * 7 + z * 11 + x * z) % 4], scene, world(x), -0.101, world(z));
+    tile.rotation.y = ((x * 3 + z) % 4) * Math.PI / 2;
     tile.userData.position = [x, z];
     tiles.push(tile);
   }
@@ -358,27 +409,14 @@ function buildLevel(definition) {
   cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.28, 0);
   cylinder(boiler, brass, 0.345, 0.035, 0, 0.59, 0);
-  const gauge = new THREE.Group();
-  gauge.position.set(0, 0.59, 0.34);
-  gauge.rotation.x = -0.44;
-  boiler.add(gauge);
-  cylinder(gauge, bronze, 0.193, 0.092, 0, 0, 0, 'z');
-  cylinder(gauge, ivory, 0.164, 0.01, 0, 0, 0.048, 'z');
-  mesh(new THREE.TorusGeometry(0.176, 0.015, 8, 26), brass, gauge, 0, 0, 0.05);
-  for (let i = 0; i <= 8; i++) {
-    const angle = THREE.MathUtils.degToRad(-120 + i * 30);
-    const tick = box(gauge, dark, 0.008, i % 2 === 0 ? 0.025 : 0.014, 0.004,
-      Math.sin(angle) * 0.136, Math.cos(angle) * 0.136, 0.056);
-    tick.rotation.z = -angle;
-  }
-  const gaugeNeedle = new THREE.Group();
-  gauge.add(gaugeNeedle);
-  box(gaugeNeedle, gaugeRed, 0.012, 0.125, 0.006, 0, 0.047, 0.061);
-  cylinder(gauge, bronze, 0.016, 0.019, 0, 0, 0.061, 'z');
+  const gaugeNeedle = mountBoilerGauge(boiler);
+  mesh(new THREE.TorusGeometry(0.097, 0.012, 8, 22), bronze, boiler, 0, 0.962, 0).rotation.x = Math.PI / 2;
+  box(boiler, brass, 0.144, 0.016, 0.019, 0, 0.962, 0);
+  box(boiler, brass, 0.019, 0.016, 0.144, 0, 0.962, 0);
 
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
-    ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0,
+    ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0, pressureVelocity: 0,
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
     ])),
@@ -388,6 +426,70 @@ function buildLevel(definition) {
     pipes: new Map(),
     fixtureBounds: group.children.flatMap(fixture => boxCorners(new THREE.Box3().setFromObject(fixture))),
   };
+}
+
+function makeGaugeFace() {
+  const dial = document.createElement('canvas');
+  dial.width = dial.height = 256;
+  const ctx = dial.getContext('2d');
+  const paper = ctx.createRadialGradient(102, 90, 12, 128, 128, 128);
+  paper.addColorStop(0, '#fff0cd');
+  paper.addColorStop(1, '#c9a777');
+  ctx.fillStyle = paper;
+  ctx.fillRect(0, 0, 256, 256);
+  const random = randomTextureSample();
+  for (let i = 0; i < 1200; i++) {
+    ctx.fillStyle = `rgba(86, 57, 33, ${random() * 0.14})`;
+    ctx.fillRect(random() * 256, random() * 256, 1.4, 1.4);
+  }
+  ctx.strokeStyle = '#473021';
+  for (let i = 0; i <= 20; i++) {
+    const angle = THREE.MathUtils.degToRad(-210 + i * 12);
+    const inner = i % 5 === 0 ? 88 : 99;
+    ctx.lineWidth = i % 5 === 0 ? 3 : 1.6;
+    ctx.beginPath();
+    ctx.moveTo(128 + Math.cos(angle) * inner, 128 + Math.sin(angle) * inner);
+    ctx.lineTo(128 + Math.cos(angle) * 110, 128 + Math.sin(angle) * 110);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#493524';
+  ctx.textAlign = 'center';
+  ctx.font = '600 20px Georgia';
+  ctx.fillText('0', 62, 174);
+  ctx.fillText('50', 128, 65);
+  ctx.fillText('100', 194, 174);
+  ctx.font = '600 16px Georgia';
+  ctx.fillText('STEAM', 128, 190);
+  const face = new THREE.CanvasTexture(dial);
+  face.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: face, roughness: 0.78 });
+}
+
+const gaugeFace = makeGaugeFace();
+
+function mountBoilerGauge(boiler) {
+  const gauge = new THREE.Group();
+  gauge.position.set(0, 0.80, 0.415);
+  gauge.rotation.x = -0.52;
+  boiler.add(gauge);
+
+  // The pressure tap starts inside the boiler and the union meets the back of the dial.
+  cylinder(boiler, bronze, 0.052, 0.14, 0, 0.642, 0.309, 'z');
+  const stem = cylinder(boiler, brass, 0.033, 0.182, 0, 0.716, 0.367);
+  stem.rotation.x = 0.39;
+  cylinder(gauge, iron, 0.107, 0.098, 0, 0, -0.039, 'z');
+  cylinder(gauge, bronze, 0.180, 0.074, 0, 0, 0, 'z');
+  mesh(new THREE.CircleGeometry(0.156, 40), gaugeFace, gauge, 0, 0, 0.039);
+  mesh(new THREE.TorusGeometry(0.164, 0.014, 8, 32), brass, gauge, 0, 0, 0.044);
+  for (const x of [-0.126, 0.126]) {
+    const screw = cylinder(gauge, bronze, 0.011, 0.006, x, -0.021, 0.043, 'z');
+    screw.castShadow = false;
+  }
+  const needle = new THREE.Group();
+  gauge.add(needle);
+  box(needle, gaugeRed, 0.010, 0.125, 0.006, 0, 0.043, 0.051);
+  cylinder(gauge, brass, 0.013, 0.012, 0, 0, 0.053, 'z');
+  return needle;
 }
 
 function buildReceiver(group, position, port, build, height) {
@@ -467,7 +569,7 @@ function buildFan(receiver) {
 }
 
 function buildPress(receiver) {
-  const enamel = material(0x93492f, 0.40);
+  const enamel = Object.assign(material(0x93492f, 0.40), enamelTexture, { bumpScale: 0.012 });
   box(receiver, iron, 0.55, 0.12, 0.46, 0.08, 0.20, 0.07);
   for (const x of [-0.19, 0.35]) {
     box(receiver, enamel, 0.09, 0.69, 0.20, x, 0.49, 0.03);
@@ -617,7 +719,6 @@ function updateFlow() {
   level.targetPressure = Math.round((35 + 65 * supply) / (1 + 0.85 * leakCount));
   pressureMeter.setAttribute('aria-valuenow', String(level.targetPressure));
   pressureReadout.textContent = `${level.targetPressure}%`;
-  pressureHand.style.transform = `rotate(${-120 + 2.4 * level.targetPressure}deg)`;
   outlets = leaks;
   for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
@@ -802,8 +903,26 @@ function animateMachine(dt) {
     machine.phase += machine.speed * dt;
     machine.animate(machine.phase);
   }
-  level.pressure = THREE.MathUtils.damp(level.pressure, level.targetPressure, 5, dt);
-  level.gaugeNeedle.rotation.z = THREE.MathUtils.degToRad(120 - 2.4 * level.pressure);
+}
+
+let gaugeTime = 0;
+function animateGauge(dt) {
+  const target = level.targetPressure;
+  if (reducedMotion.matches) {
+    level.pressure = target;
+    level.pressureVelocity = 0;
+  } else {
+    // A damped spring models the needle's inertia and slightly overshoots during a pressure change.
+    const acceleration = 15 * (target - level.pressure) - 5.3 * level.pressureVelocity;
+    level.pressureVelocity += acceleration * dt;
+    level.pressure += level.pressureVelocity * dt;
+    gaugeTime += dt;
+  }
+  const ripple = reducedMotion.matches ? 0 : Math.sin(gaugeTime * 7.8) * 0.36 + Math.sin(gaugeTime * 12.1) * 0.12;
+  const reading = THREE.MathUtils.clamp(level.pressure, 0, 100) + ripple * Math.min(1, target / 20);
+  const angle = -120 + 2.4 * reading;
+  level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(angle);
+  pressureHand.style.transform = `rotate(${angle.toFixed(2)}deg)`;
 }
 
 function boxCorners({ min, max }) {
@@ -968,6 +1087,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min((now - previous) / 1000, 0.05);
   previous = now;
   animateMachine(dt);
+  animateGauge(dt);
   animateSteam(dt);
   renderer.render(scene, camera);
 });

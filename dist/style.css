@@ -32,8 +32,8 @@ button[aria-pressed="true"] { border-color: #89c6b4; background: #29423a; color:
   border: 1px solid #4b4d40;
   border-radius: 14px;
   background:
-    radial-gradient(ellipse at 20% 15%, #60422f, transparent 62%),
-    radial-gradient(ellipse at 90% 20%, #29423e, #181e19 65%, #101411);
+    radial-gradient(ellipse at 24% 12%, #6c4a33, transparent 55%),
+    radial-gradient(ellipse at 92% 20%, #2a4947, #1b201a 58%, #101411);
   box-shadow: 0 18px 55px #080a08a6, inset 0 0 0 1px #121510;
 }
 #stage { height: clamp(325px, 57vh, 660px); border-radius: inherit; }
@@ -53,8 +53,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
 .pressure svg { display: block; width: 86px; }
 .pressure-label { color: #d9be94; font-size: .72rem; text-align: right; }
 .pressure-label strong { display: block; color: #ffebc7; font: 600 1.65rem Georgia, serif; }
-#pressure-hand { transform-origin: 52px 46px; transform: rotate(-120deg); transition: transform .38s ease-out; }
-@media (prefers-reduced-motion: reduce) { #pressure-hand { transition: none; } }
+#pressure-hand { transform-origin: 52px 46px; transform: rotate(-120deg); }
 .legend { position: absolute; left: 16px; pointer-events: none; color: #dcd9c8; font-size: .78rem; }
 .readout { display: flex; align-items: center; gap: 8px; background: #101815e8; padding: 7px 11px; border-radius: 6px; color: #dcd9c8; font-size: .78rem; }
 .readout p { margin: 0; }
