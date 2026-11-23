@@ -29,6 +29,12 @@
         <p id="status" role="status">Boiler on · Flywheel idle</p>
       </div>
       <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span></div>
+      <div class="view-controls" role="group" aria-label="Board camera">
+        <button id="view-left" type="button" aria-label="Rotate view left" title="Rotate view left">↶</button>
+        <button id="view-right" type="button" aria-label="Rotate view right" title="Rotate view right">↷</button>
+        <button id="view-overhead" type="button" aria-pressed="false">Overhead</button>
+        <button id="view-home" type="button" disabled>Reset view</button>
+      </div>
     </section>
     <section class="controls" aria-label="Pipe tools">
       <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>

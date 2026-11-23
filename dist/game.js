@@ -21,9 +21,24 @@ const workshop = document.querySelector('#workshop');
 const status = document.querySelector('#status');
 
 const scene = new THREE.Scene();
-const camera = new THREE.OrthographicCamera();
-camera.position.set(2.6, 8.8, 9.4);
-camera.lookAt(0, 0, 0);
+const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 40);
+const viewDistance = 17;
+let viewTurns = 0;
+let overhead = false;
+
+function aimCamera() {
+  const azimuth = viewTurns * Math.PI / 2;
+  const elevation = overhead ? Math.PI / 2 - 0.0001 : Math.PI * 0.28;
+  camera.position.set(
+    Math.sin(azimuth) * Math.cos(elevation) * viewDistance,
+    Math.sin(elevation) * viewDistance,
+    Math.cos(azimuth) * Math.cos(elevation) * viewDistance,
+  );
+  camera.lookAt(0, overhead ? 0 : -0.18, 0);
+  camera.updateMatrixWorld();
+}
+
+aimCamera();
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -31,6 +46,27 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.22;
 stage.append(renderer.domElement);
+
+const reflectionCanvas = document.createElement('canvas');
+reflectionCanvas.width = 256;
+reflectionCanvas.height = 128;
+const reflectionPaint = reflectionCanvas.getContext('2d');
+reflectionPaint.fillStyle = '#373b39';
+reflectionPaint.fillRect(0, 0, 256, 128);
+for (const [x, y, radius, color] of [
+  [54, 30, 57, '#ffd6ad'], [169, 36, 41, '#79a3b4'], [226, 42, 28, '#b7c5be'],
+]) {
+  const light = reflectionPaint.createRadialGradient(x, y, 2, x, y, radius);
+  light.addColorStop(0, color);
+  light.addColorStop(1, 'transparent');
+  reflectionPaint.fillStyle = light;
+  reflectionPaint.fillRect(0, 0, 256, 128);
+}
+const reflection = new THREE.CanvasTexture(reflectionCanvas);
+reflection.colorSpace = THREE.SRGBColorSpace;
+reflection.mapping = THREE.EquirectangularReflectionMapping;
+scene.environment = reflection;
+scene.environmentIntensity = 0.72;
 
 scene.add(new THREE.HemisphereLight(0xb9d4dc, 0x685143, 1.35));
 const sun = new THREE.DirectionalLight(0xffc58e, 3.45);
@@ -49,14 +85,17 @@ function material(color, metalness = 0.35, roughness = 0.48) {
   return new THREE.MeshStandardMaterial({ color, metalness, roughness });
 }
 
-const iron = material(0x515457, 0.64, 0.43);
-const frame = material(0x403731, 0.48);
+const iron = material(0x51575a, 0.69, 0.39);
+const castSteel = material(0x635e58, 0.5, 0.67);
+const bronze = material(0x946134, 0.69, 0.46);
+const frame = material(0x584236, 0.54, 0.64);
 const dark = material(0x171c1b, 0.2);
-const brass = material(0xc88b44, 0.65, 0.32);
+const brass = material(0xc99654, 0.72, 0.33);
 const teal = material(0x376e65, 0.42);
 const collarActive = brass.clone();
 collarActive.emissive.setHex(0x9c470c);
 collarActive.emissiveIntensity = 0.58;
+const rivetGeometry = new THREE.SphereGeometry(0.022, 8, 6);
 const boltGeometry = new THREE.CylinderGeometry(0.047, 0.047, 0.035, 6);
 
 function mesh(geometry, finish, parent, x = 0, y = 0, z = 0) {
@@ -72,6 +111,25 @@ function box(parent, finish, w, h, d, x, y, z) {
   return mesh(new THREE.BoxGeometry(w, h, d), finish, parent, x, y, z);
 }
 
+const beveledParts = new Map();
+
+function castBlock(parent, finish, w, h, d, x, y, z, bevel) {
+  const dimensions = [w, h, d, bevel].join(',');
+  if (!beveledParts.has(dimensions)) {
+    const halfWidth = w / 2 - bevel;
+    const halfDepth = d / 2 - bevel;
+    const shape = new THREE.Shape().moveTo(-halfWidth, -halfDepth).lineTo(halfWidth, -halfDepth)
+      .lineTo(halfWidth, halfDepth).lineTo(-halfWidth, halfDepth).closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+      depth: h - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2,
+    });
+    geometry.rotateX(-Math.PI / 2);
+    geometry.center();
+    beveledParts.set(dimensions, geometry);
+  }
+  return mesh(beveledParts.get(dimensions), finish, parent, x, y, z);
+}
+
 function cylinder(parent, finish, radius, length, x, y, z, axis = 'y') {
   const object = mesh(new THREE.CylinderGeometry(radius, radius, length, 24), finish, parent, x, y, z);
   if (axis === 'x') object.rotation.z = Math.PI / 2;
@@ -82,6 +140,7 @@ function cylinder(parent, finish, radius, length, x, y, z, axis = 'y') {
 function atTile(x, z, parent = scene) {
   const group = new THREE.Group();
   group.position.set(world(x), 0, world(z));
+  group.userData.position = [x, z];
   parent.add(group);
   return group;
 }
@@ -92,19 +151,19 @@ function bolts(parent, spread, height) {
   }
 }
 
-const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.32 }), scene, 0, -0.91, 0);
+const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.25 }), scene, 0, -0.91, 0);
 floor.rotation.x = -Math.PI / 2;
 floor.castShadow = false;
-box(scene, dark, 6.64, 0.49, 6.64, 0, -0.36, 0);
+castBlock(scene, dark, 6.64, 0.49, 6.64, 0, -0.36, 0, 0.075);
 box(scene, frame, 6.69, 0.085, 6.69, 0, -0.53, 0);
 box(scene, brass, 1.48, 0.19, 0.05, 0, -0.323, 3.32);
 box(scene, dark, 1.35, 0.105, 0.06, 0, -0.323, 3.348);
-box(scene, frame, 6.73, 0.14, 6.73, 0, -0.11, 0);
+castBlock(scene, frame, 6.73, 0.15, 6.73, 0, -0.11, 0, 0.045);
 for (const x of [-3.19, 3.19]) {
   for (const z of [-3.19, 3.19]) {
     box(scene, teal, 0.49, 0.4, 0.49, x * 0.88, -0.70, z * 0.88);
     box(scene, frame, 0.57, 0.08, 0.57, x * 0.88, -0.86, z * 0.88);
-    box(scene, teal, 0.29, 0.16, 0.29, x, -0.035, z);
+    castBlock(scene, teal, 0.31, 0.16, 0.31, x, -0.035, z, 0.027);
     mesh(boltGeometry, brass, scene, x, 0.06, z);
   }
 }
@@ -159,19 +218,26 @@ function buildLevel(definition) {
   scene.add(group);
   for (const [x, z] of definition.obstacles) {
     const block = atTile(x, z, group);
-    box(block, dark, 0.83, 0.09, 0.83, 0, 0.05, 0);
-    box(block, frame, 0.74, 0.34, 0.74, 0, 0.22, 0);
-    box(block, iron, 0.75, 0.055, 0.75, 0, 0.41, 0);
-    bolts(block, 0.27, 0.455);
+    castBlock(block, dark, 0.85, 0.10, 0.85, 0, 0.05, 0, 0.025);
+    castBlock(block, castSteel, 0.77, 0.38, 0.77, 0, 0.25, 0, 0.043);
+    castBlock(block, iron, 0.81, 0.075, 0.81, 0, 0.395, 0, 0.019);
+    bolts(block, 0.294, 0.446);
   }
 
   const boiler = atTile(...definition.source, group);
-  box(boiler, frame, 0.85, 0.09, 0.85, 0, 0.05, 0);
+  castBlock(boiler, frame, 0.87, 0.10, 0.87, 0, 0.05, 0, 0.025);
   bolts(boiler, 0.32, 0.105);
-  cylinder(boiler, brass, 0.32, 0.62, 0, 0.43, 0);
-  for (const y of [0.17, 0.69]) cylinder(boiler, iron, 0.344, 0.075, 0, y, 0);
+  cylinder(boiler, bronze, 0.332, 0.62, 0, 0.43, 0);
+  for (const y of [0.17, 0.69]) {
+    cylinder(boiler, bronze, 0.359, 0.073, 0, y, 0);
+    for (let i = 0; i < 12; i++) {
+      const angle = i * Math.PI / 6;
+      mesh(rivetGeometry, brass, boiler, 0.358 * Math.cos(angle), y, 0.358 * Math.sin(angle));
+    }
+  }
   const dome = mesh(new THREE.SphereGeometry(0.31, 24, 12), brass, boiler, 0, 0.72, 0);
-  dome.scale.y = 0.46;
+  dome.scale.y = 0.59;
+  mesh(new THREE.TorusGeometry(0.315, 0.019, 8, 32), brass, boiler, 0, 0.729, 0).rotation.x = Math.PI / 2;
   cylinder(boiler, iron, 0.06, 0.12, 0, 0.875, 0);
   cylinder(boiler, brass, 0.102, 0.037, 0, 0.938, 0);
   cylinder(boiler, iron, 0.115, 0.31, 0.345, pipeHeight, 0, 'x');
@@ -183,8 +249,9 @@ function buildLevel(definition) {
   box(boiler, dark, 0.013, 0.09, 0.006, 0, 0.558, 0.36).rotation.z = -0.6;
 
   const receiver = atTile(...definition.destination, group);
-  box(receiver, teal, 0.92, 0.12, 0.94, 0, 0.06, 0);
-  bolts(receiver, 0.36, 0.134);
+  castBlock(receiver, dark, 0.97, 0.075, 0.98, 0, 0.0375, 0, 0.019);
+  castBlock(receiver, teal, 0.91, 0.11, 0.91, 0, 0.106, 0, 0.027);
+  bolts(receiver, 0.36, 0.169);
   cylinder(receiver, iron, 0.11, 0.36, -0.32, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.05, 0.38, -0.29, 0.39, -0.32);
@@ -208,13 +275,15 @@ function buildLevel(definition) {
 
 function buildFlywheel(receiver) {
   cylinder(receiver, iron, 0.155, 0.33, -0.15, 0.38, 0.04, 'x');
-  box(receiver, teal, 0.26, 0.48, 0.23, 0.23, 0.33, -0.05);
+  castBlock(receiver, teal, 0.28, 0.49, 0.25, 0.23, 0.35, -0.05, 0.036);
   cylinder(receiver, iron, 0.075, 0.29, 0.23, 0.54, 0.06, 'z');
 
   const wheel = new THREE.Group();
   wheel.position.set(0.23, 0.54, 0.19);
   receiver.add(wheel);
-  mesh(new THREE.TorusGeometry(0.285, 0.046, 10, 36), brass, wheel);
+  mesh(new THREE.TorusGeometry(0.305, 0.055, 10, 40), bronze, wheel);
+  mesh(new THREE.TorusGeometry(0.314, 0.023, 8, 40), brass, wheel, 0, 0, 0.043);
+  mesh(new THREE.TorusGeometry(0.314, 0.023, 8, 40), brass, wheel, 0, 0, -0.043);
   cylinder(wheel, brass, 0.08, 0.105, 0, 0, 0, 'z');
   for (let spoke = 0; spoke < 6; spoke++) {
     const angle = spoke * Math.PI / 3;
@@ -275,7 +344,7 @@ function buildPress(receiver) {
 }
 
 function pipeGeometry(type) {
-  const radius = 0.108;
+  const radius = 0.116;
   const start = new THREE.Vector3(0.5, 0, 0);
   const path = type === 'straight'
     ? new THREE.LineCurve3(start, new THREE.Vector3(-0.5, 0, 0))
@@ -301,9 +370,16 @@ function addPipe(x, z, type, rotation, fixed = false) {
   mesh(bodies[type], iron, group);
   const collars = pipePorts[type].map(port => {
     const [dx, dz] = directions[port];
-    const collar = mesh(collarGeometry, brass, group, dx * 0.451, 0, dz * 0.451);
-    if (dx) collar.rotation.z = Math.PI / 2;
-    else collar.rotation.x = Math.PI / 2;
+    const flange = new THREE.Group();
+    flange.position.set(dx * 0.451, 0, dz * 0.451);
+    if (dx) flange.rotation.z = Math.PI / 2;
+    else flange.rotation.x = Math.PI / 2;
+    group.add(flange);
+    const collar = mesh(collarGeometry, brass, flange);
+    for (let i = 0; i < 4; i++) {
+      const angle = (i + 0.5) * Math.PI / 2;
+      mesh(rivetGeometry, bronze, flange, Math.cos(angle) * 0.128, 0.025, Math.sin(angle) * 0.128);
+    }
     return collar;
   });
   group.rotation.y = -rotation * Math.PI / 2;
@@ -405,6 +481,12 @@ function pick(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.set(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height);
   raycaster.setFromCamera(pointer, camera);
+  const fixtureHit = raycaster.intersectObjects(level.group.children)[0];
+  if (fixtureHit) {
+    let object = fixtureHit.object;
+    while (object.parent !== level.group) object = object.parent;
+    return object.userData.position;
+  }
   return raycaster.intersectObjects(tiles)[0]?.object.userData.position;
 }
 
@@ -428,7 +510,9 @@ stage.addEventListener('keydown', event => {
   const move = moves[event.key];
   if (move) {
     event.preventDefault();
-    const [x, z] = selection.map((value, i) => THREE.MathUtils.clamp(value + move[i], 0, size - 1));
+    const direction = directions.findIndex(([x, z]) => x === move[0] && z === move[1]);
+    const boardMove = directions[(direction - viewTurns + 4) % 4];
+    const [x, z] = selection.map((value, i) => THREE.MathUtils.clamp(value + boardMove[i], 0, size - 1));
     select(x, z);
   } else if (['Enter', ' ', 'r', 'R', 'Delete', 'Backspace'].includes(event.key)) {
     event.preventDefault();
@@ -505,16 +589,41 @@ function animateMachine(dt) {
 function resize() {
   const { clientWidth: width, clientHeight: height } = stage;
   const aspect = width / Math.max(height, 1);
-  const viewHeight = Math.max(7.6, 8.7 / aspect);
-  camera.left = -viewHeight * aspect / 2;
-  camera.right = -camera.left;
-  camera.top = viewHeight / 2 + 0.16;
-  camera.bottom = -viewHeight / 2 + 0.16;
-  camera.near = 0.1;
-  camera.far = 40;
+  const boardWidth = overhead ? 7.45 : 8.1;
+  const viewHeight = Math.max(7.6, boardWidth / aspect);
+  camera.aspect = aspect;
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(viewHeight / (2 * viewDistance)));
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
 }
+
+const overheadButton = document.querySelector('#view-overhead');
+const homeButton = document.querySelector('#view-home');
+
+function updateView() {
+  aimCamera();
+  resize();
+  overheadButton.setAttribute('aria-pressed', String(overhead));
+  homeButton.disabled = viewTurns === 0 && !overhead;
+}
+
+document.querySelector('#view-left').addEventListener('click', () => {
+  viewTurns = (viewTurns + 3) % 4;
+  updateView();
+});
+document.querySelector('#view-right').addEventListener('click', () => {
+  viewTurns = (viewTurns + 1) % 4;
+  updateView();
+});
+overheadButton.addEventListener('click', () => {
+  overhead = !overhead;
+  updateView();
+});
+homeButton.addEventListener('click', () => {
+  viewTurns = 0;
+  overhead = false;
+  updateView();
+});
 
 const levelSelect = document.querySelector('#level');
 

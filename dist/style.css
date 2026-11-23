@@ -48,3 +48,19 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
   #stage { height: clamp(345px, 57vh, 530px); }
   .legend { bottom: 10px; }
 }
+
+.view-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 5px;
+}
+.view-controls button { background: #17221eeb; }
+.view-controls button:hover { background: #303d37; }
+.view-controls button[aria-pressed="true"] { background: #29423a; }
+.view-controls button:disabled { opacity: .54; cursor: default; }
+@media (max-width: 560px) {
+  .view-controls { position: static; justify-content: center; padding: 0 7px 12px; }
+  .legend { bottom: 65px; }
+}
