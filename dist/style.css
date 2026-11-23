@@ -37,7 +37,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
 .powered .indicator { background: #8ce2b1; box-shadow: 0 0 8px #8ce2b1; }
 .legend { bottom: 13px; display: flex; gap: 14px; }
 .legend > span:first-child { color: #edbb73; }
-.legend > span:last-child { color: #a6d6c3; }
+.legend > span:nth-child(2) { color: #a6d6c3; }
 .controls { margin-top: 16px; flex-wrap: wrap; }
 .instructions h2 { margin: 0 0 4px; font-size: 1rem; }
 .instructions p { margin: 0; font-size: .86rem; color: #bbbfb4; }
@@ -64,3 +64,5 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
   .view-controls { position: static; justify-content: center; padding: 0 7px 12px; }
   .legend { bottom: 65px; }
 }
+
+#fixed-legend { color: #9dd6e6; }

@@ -17,6 +17,9 @@
             <option value="0">1 · Flywheel</option>
             <option value="1">2 · Ventilation fan</option>
             <option value="2">3 · Steam press</option>
+            <option value="3">4 · Split shift</option>
+            <option value="4">5 · Cross pressure</option>
+            <option value="5">6 · Factory manifold</option>
           </select>
         </label>
         <button id="reset" type="button">Reset board</button>
@@ -28,7 +31,7 @@
         <span class="indicator"></span>
         <p id="status" role="status">Boiler on · Flywheel idle</p>
       </div>
-      <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span></div>
+      <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span><span id="fixed-legend" hidden>◆ Fixed pipes</span></div>
       <div class="view-controls" role="group" aria-label="Board camera">
         <button id="view-left" type="button" aria-label="Rotate view left" title="Rotate view left">↶</button>
         <button id="view-right" type="button" aria-label="Rotate view right" title="Rotate view right">↷</button>
@@ -41,6 +44,8 @@
       <div class="tools" role="group" aria-label="Select a tool">
         <button type="button" data-tool="straight" aria-pressed="true"><span aria-hidden="true">━</span> Straight</button>
         <button type="button" data-tool="elbow" aria-pressed="false"><span aria-hidden="true">┗</span> Elbow</button>
+        <button type="button" data-tool="tee" aria-pressed="false" title="Split the flow into two branches" hidden><span aria-hidden="true">┳</span> Tee</button>
+        <button type="button" data-tool="cross" aria-pressed="false" title="Join four directions in one tile" hidden><span aria-hidden="true">╋</span> Cross</button>
         <button type="button" data-tool="remove" aria-pressed="false"><span aria-hidden="true">×</span> Remove</button>
       </div>
     </section>
