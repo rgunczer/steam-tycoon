@@ -14,12 +14,28 @@
       <div class="board-controls">
         <label class="level-picker" for="level">Board
           <select id="level">
-            <option value="0">1 · Flywheel</option>
-            <option value="1">2 · Ventilation fan</option>
-            <option value="2">3 · Steam press</option>
-            <option value="3">4 · Split shift</option>
-            <option value="4">5 · Cross pressure</option>
-            <option value="5">6 · Factory manifold</option>
+            <optgroup label="Ground boards">
+              <option value="0">1 · Flywheel</option>
+              <option value="1">2 · Ventilation fan</option>
+              <option value="2">3 · Steam press</option>
+            </optgroup>
+            <optgroup label="Branching boards">
+              <option value="3">4 · Split shift</option>
+              <option value="4">5 · Cross pressure</option>
+              <option value="5">6 · Factory manifold</option>
+            </optgroup>
+            <optgroup label="Raised walls">
+              <option value="6">7 · First rise</option>
+              <option value="7">8 · Upper gallery</option>
+            </optgroup>
+            <optgroup label="Raised obstacles">
+              <option value="8">9 · Casting yard</option>
+              <option value="9">10 · Foundry steps</option>
+            </optgroup>
+            <optgroup label="Walls and obstacles">
+              <option value="10">11 · Over the parapet</option>
+              <option value="11">12 · Terraced works</option>
+            </optgroup>
           </select>
         </label>
         <button id="reset" type="button">Reset board</button>
@@ -55,12 +71,22 @@
       </div>
     </section>
     <section class="controls" aria-label="Pipe tools">
+      <label class="level-picker" id="height-control" for="height-guide" hidden>Highlight height
+        <select id="height-guide">
+          <option value="">Off</option>
+          <option value="0">Ground</option>
+          <option value="1">Level 1</option>
+          <option value="2">Level 2</option>
+        </select>
+      </label>
       <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
       <div class="tools" role="group" aria-label="Select a tool">
         <button type="button" data-tool="straight" aria-pressed="true"><span aria-hidden="true">━</span> Straight</button>
         <button type="button" data-tool="elbow" aria-pressed="false"><span aria-hidden="true">┗</span> Elbow</button>
         <button type="button" data-tool="tee" aria-pressed="false" title="Split the flow into two branches" hidden><span aria-hidden="true">┳</span> Tee</button>
         <button type="button" data-tool="cross" aria-pressed="false" title="Join four directions in one tile" hidden><span aria-hidden="true">╋</span> Cross</button>
+        <button type="button" data-tool="riser" aria-pressed="false" title="Place on the lower tile. Rotate to aim the high end." hidden>Riser</button>
+        <button type="button" data-tool="riser-elbow" aria-pressed="false" title="Climb one height while turning a corner." hidden>Riser elbow</button>
         <button type="button" data-tool="remove" aria-pressed="false"><span aria-hidden="true">×</span> Remove</button>
       </div>
     </section>

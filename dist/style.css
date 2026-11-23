@@ -95,3 +95,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; 
 }
 
 #fixed-legend { color: #9dd6e6; }
+
+#height-control[hidden] { display: none; }
+#height-control { order: 1; }

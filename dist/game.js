@@ -39,15 +39,67 @@ const levels = [
       { position: [2, 5], port: 3, build: buildFan },
     ],
   },
+  {
+    name: 'First rise', view: [-34, 55], source: [0, 3], destination: [5, 3],
+    machineName: 'Flywheel', action: 'spinning', build: buildFlywheel, obstacles: [],
+    terrain: wallColumn(3, 1), fixed: [[3, 3, 'straight', 0]],
+  },
+  {
+    name: 'Upper gallery', view: [-36, 57], source: [0, 2], destination: [5, 2],
+    machineName: 'Ventilation fan', action: 'ventilating', build: buildFan, obstacles: [],
+    terrain: [...wallColumn(3, 1), ...wallColumn(4, 2), [5, 2, 2, 'wall']],
+    fixed: [[4, 2, 'straight', 0]],
+  },
+  {
+    name: 'Casting yard', view: [38, 56], source: [0, 4], destination: [5, 3],
+    machineName: 'Steam press', action: 'stamping', build: buildPress, bendRisers: true,
+    terrain: [[2, 3, 1], [3, 3, 1]], fixed: [[3, 3, 'straight', 0]],
+    obstacles: [[3, 0], [3, 1], [3, 2], [3, 4], [3, 5]],
+  },
+  {
+    name: 'Foundry steps', view: [-35, 60], source: [0, 4], destination: [5, 2],
+    machineName: 'Flywheel', action: 'spinning', build: buildFlywheel, bendRisers: true,
+    terrain: [[2, 3, 1], [2, 2, 2], [3, 2, 2], [4, 2, 1], [5, 2, 1]],
+    obstacles: [[3, 3], [3, 4], [2, 1], [3, 1], [4, 1]],
+    fixed: [[4, 2, 'riser', 2]],
+  },
+  {
+    name: 'Over the parapet', view: [-40, 61], source: [0, 4], destination: [5, 3],
+    machineName: 'Ventilation fan', action: 'ventilating', build: buildFan, bendRisers: true,
+    terrain: [...wallColumn(3, 1).filter(([, z]) => z !== 3),
+      [3, 3, 2], [4, 3, 1], [5, 3, 1, 'wall']],
+    obstacles: [[2, 2], [4, 2], [4, 4]],
+    fixed: [[3, 3, 'elbow', 0], [4, 3, 'riser', 2]],
+  },
+  {
+    name: 'Terraced works', view: [-43, 62], source: [0, 3], junctions: ['tee', 'cross'], bendRisers: true,
+    terrain: [...wallColumn(3, 1).slice(0, 5), [3, 5, 2], [4, 5, 2], [5, 5, 2]],
+    obstacles: [[2, 2], [2, 4], [4, 2], [4, 4]],
+    fixed: [[3, 5, 'elbow', 3], [4, 5, 'straight', 0]],
+    receivers: [
+      { position: [5, 3], build: buildFlywheel },
+      { position: [5, 5], build: buildPress },
+    ],
+  },
 ];
+function wallColumn(x, height) {
+  return Array.from({ length: size }, (_, z) => [x, z, height, 'wall']);
+}
+
 const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-const pipePorts = { straight: [0, 2], elbow: [0, 1], tee: [0, 1, 2], cross: [0, 1, 2, 3] };
-const rotationCount = { straight: 2, elbow: 4, tee: 4, cross: 1 };
+const pipePorts = {
+  straight: [0, 2], elbow: [0, 1], tee: [0, 1, 2], cross: [0, 1, 2, 3],
+  riser: [2, 0], 'riser-elbow': [2, 3],
+};
+const rotationCount = { straight: 2, elbow: 4, tee: 4, cross: 1, riser: 4, 'riser-elbow': 4 };
+const riseByPort = { riser: [0, 1], 'riser-elbow': [0, 1] };
 const key = (x, z) => z * size + x;
 const inside = (x, z) => x >= 0 && z >= 0 && x < size && z < size;
 const world = n => n - (size - 1) / 2;
 let level;
 const pipeHeight = 0.27;
+const heightStep = 0.68;
+const maxHeight = 2;
 const stage = document.querySelector('#stage');
 const workshop = document.querySelector('#workshop');
 const status = document.querySelector('#status');
@@ -129,6 +181,10 @@ const frame = material(0x584236, 0.54, 0.64);
 const dark = material(0x171c1b, 0.2);
 const brass = material(0xc99654, 0.72, 0.33);
 const teal = material(0x376e65, 0.42);
+const wallFinish = material(0x534b43, 0.42, 0.7);
+const platformFinish = material(0x475d59, 0.42, 0.62);
+const deckFinish = material(0x776655, 0.38, 0.72);
+const riserFinish = material(0x995d38, 0.62, 0.43);
 const fixedPipeFinish = material(0x468e9f, 0.48, 0.4);
 const collarActive = brass.clone();
 collarActive.emissive.setHex(0x9c470c);
@@ -175,9 +231,9 @@ function cylinder(parent, finish, radius, length, x, y, z, axis = 'y') {
   return object;
 }
 
-function atTile(x, z, parent = scene) {
+function atTile(x, z, parent = scene, height = 0) {
   const group = new THREE.Group();
-  group.position.set(world(x), 0, world(z));
+  group.position.set(world(x), height * heightStep, world(z));
   group.userData.position = [x, z];
   parent.add(group);
   return group;
@@ -250,10 +306,30 @@ for (let z = 0; z < size; z++) {
     tiles.push(tile);
   }
 }
+function buildTerrain(group, terrain) {
+  for (const [x, z, height, kind] of terrain) {
+    const support = atTile(x, z, group, height);
+    const wall = kind === 'wall';
+    const width = wall ? 0.99 : 0.88;
+    for (let step = 0; step < height; step++) {
+      const y = -(step + 0.5) * heightStep;
+      castBlock(support, wall ? wallFinish : platformFinish,
+        width, heightStep, width, 0, y, 0, 0.028);
+      castBlock(support, bronze, width + 0.006, 0.04, width + 0.006,
+        0, y - heightStep * 0.29, 0, 0.011);
+    }
+    castBlock(support, deckFinish, 0.91, 0.074, 0.91, 0, -0.036, 0, 0.018);
+    bolts(support, 0.37, 0.018);
+  }
+}
+
 function buildLevel(definition) {
   const group = new THREE.Group();
   group.visible = false;
   scene.add(group);
+  const terrain = definition.terrain ?? [];
+  const heights = new Map(terrain.map(([x, z, height]) => [key(x, z), height]));
+  buildTerrain(group, terrain);
   for (const [x, z] of definition.obstacles) {
     const block = atTile(x, z, group);
     castBlock(block, dark, 0.85, 0.10, 0.85, 0, 0.05, 0, 0.025);
@@ -262,7 +338,7 @@ function buildLevel(definition) {
     bolts(block, 0.294, 0.446);
   }
 
-  const boiler = atTile(...definition.source, group);
+  const boiler = atTile(...definition.source, group, heights.get(key(...definition.source)) ?? 0);
   castBlock(boiler, frame, 0.87, 0.10, 0.87, 0, 0.05, 0, 0.025);
   bolts(boiler, 0.32, 0.105);
   cylinder(boiler, bronze, 0.332, 0.62, 0, 0.43, 0);
@@ -304,8 +380,9 @@ function buildLevel(definition) {
   return {
     ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0,
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
-      key(...position), buildReceiver(group, position, port, build),
+      key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
     ])),
+    heights,
     sourceKey: key(...definition.source),
     blocked: new Set(definition.obstacles.map(position => key(...position))),
     pipes: new Map(),
@@ -313,8 +390,8 @@ function buildLevel(definition) {
   };
 }
 
-function buildReceiver(group, position, port, build) {
-  const receiver = atTile(...position, group);
+function buildReceiver(group, position, port, build, height) {
+  const receiver = atTile(...position, group, height);
   receiver.rotation.y = -(port - 2) * Math.PI / 2;
   castBlock(receiver, dark, 0.97, 0.075, 0.98, 0, 0.0375, 0, 0.019);
   castBlock(receiver, teal, 0.91, 0.11, 0.91, 0, 0.106, 0, 0.027);
@@ -418,7 +495,21 @@ function pipeGeometry(type) {
   return new THREE.TubeGeometry(path, type === 'elbow' ? 24 : 1, radius, 20, false);
 }
 
-const bodies = { straight: pipeGeometry('straight'), elbow: pipeGeometry('elbow') };
+function riserGeometry(type) {
+  const [low, high] = pipePorts[type].map(port => {
+    const [x, z] = directions[port];
+    return new THREE.Vector3(x * 0.5, 0, z * 0.5);
+  });
+  const lowTurn = low.clone().multiplyScalar(0.30);
+  const highTurn = high.clone().multiplyScalar(0.30);
+  high.y = highTurn.y = heightStep;
+  return new THREE.TubeGeometry(new THREE.CubicBezierCurve3(low, lowTurn, highTurn, high), 28, 0.116, 20, false);
+}
+
+const bodies = {
+  straight: pipeGeometry('straight'), elbow: pipeGeometry('elbow'),
+  riser: riserGeometry('riser'), 'riser-elbow': riserGeometry('riser-elbow'),
+};
 const junctionHub = new THREE.SphereGeometry(0.155, 20, 12);
 const junctionArm = new THREE.TubeGeometry(
   new THREE.LineCurve3(new THREE.Vector3(), new THREE.Vector3(0.5, 0, 0)), 1, 0.116, 20, false,
@@ -434,10 +525,15 @@ let tool = 'straight';
 let powered = false;
 let outlets = [];
 
+function heightAt(index) {
+  return level.heights.get(index) ?? 0;
+}
+
 function addPipe(x, z, type, rotation, fixed = false) {
-  const group = atTile(x, z, level.group);
-  group.position.y = pipeHeight;
-  const finish = fixed ? fixedPipeFinish : iron;
+  const group = atTile(x, z, level.group, heightAt(key(x, z)));
+  group.position.y += pipeHeight;
+  const elevations = riseByPort[type];
+  const finish = fixed ? fixedPipeFinish : elevations ? riserFinish : iron;
   if (bodies[type]) {
     mesh(bodies[type], finish, group);
   } else {
@@ -450,10 +546,10 @@ function addPipe(x, z, type, rotation, fixed = false) {
     const bracket = castBlock(group, bronze, 0.35, 0.065, 0.35, 0, -0.223, 0, 0.012);
     bolts(bracket, 0.132, 0.035);
   }
-  const collars = pipePorts[type].map(port => {
+  const collars = pipePorts[type].map((port, i) => {
     const [dx, dz] = directions[port];
     const flange = new THREE.Group();
-    flange.position.set(dx * 0.451, 0, dz * 0.451);
+    flange.position.set(dx * 0.451, (elevations?.[i] ?? 0) * heightStep, dz * 0.451);
     if (dx) flange.rotation.z = Math.PI / 2;
     else flange.rotation.x = Math.PI / 2;
     group.add(flange);
@@ -469,11 +565,15 @@ function addPipe(x, z, type, rotation, fixed = false) {
 }
 
 function portsAt(index) {
-  if (index === level.sourceKey) return [0];
+  const height = heightAt(index);
+  if (index === level.sourceKey) return [{ direction: 0, height }];
   const machine = level.machines.get(index);
-  if (machine) return [machine.port];
+  if (machine) return [{ direction: machine.port, height }];
   const pipe = level.pipes.get(index);
-  return pipe ? pipePorts[pipe.type].map(port => (port + pipe.rotation) % 4) : [];
+  return pipe ? pipePorts[pipe.type].map((port, i) => ({
+    direction: (port + pipe.rotation) % 4,
+    height: height + (riseByPort[pipe.type]?.[i] ?? 0),
+  })) : [];
 }
 
 function updateFlow() {
@@ -484,11 +584,16 @@ function updateFlow() {
     if (level.machines.has(index)) continue;
     const x = index % size;
     const z = Math.floor(index / size);
-    for (const port of portsAt(index)) {
-      const [dx, dz] = directions[port];
+    for (const { direction, height } of portsAt(index)) {
+      const [dx, dz] = directions[direction];
       const next = key(x + dx, z + dz);
-      if (!inside(x + dx, z + dz) || !portsAt(next).includes((port + 2) % 4)) {
-        leaks.push({ x: world(x) + 0.49 * dx, y: pipeHeight, z: world(z) + 0.49 * dz, dx, dz });
+      const matched = inside(x + dx, z + dz) && portsAt(next).some(port =>
+        port.direction === (direction + 2) % 4 && port.height === height);
+      if (!matched) {
+        leaks.push({
+          x: world(x) + 0.49 * dx, y: pipeHeight + height * heightStep,
+          z: world(z) + 0.49 * dz, dx, dz,
+        });
       } else if (!active.has(next)) {
         active.add(next);
         queue.push(next);
@@ -519,8 +624,9 @@ function updateFlow() {
   }
   workshop.classList.toggle('powered', powered);
   const leakStatus = leakCount === 1 ? '1 leak' : `${leakCount} leaks`;
+  const machineName = level.machineName ?? level.name;
   const message = level.machines.size === 1
-    ? (powered ? `Steam delivered · ${level.name} ${level.action}` : `Boiler on · ${level.name} idle`)
+    ? (powered ? `Steam delivered · ${machineName} ${level.action}` : `Boiler on · ${machineName} idle`)
     : (powered ? `Board complete · ${supplied}/${level.machines.size} machines powered`
       : `${supplied}/${level.machines.size} machines powered · ${leakStatus}`);
   if (status.textContent !== message) status.textContent = message;
@@ -556,8 +662,12 @@ function act(x, z, action = tool) {
   else if (pipe) {
     pipe.rotation = (pipe.rotation + 1) % rotationCount[pipe.type];
     pipe.group.rotation.y = -pipe.rotation * Math.PI / 2;
-  } else if (action in pipePorts) addPipe(x, z, action, 0);
+  } else if (canPlace(index, action)) addPipe(x, z, action, 0);
   updateFlow();
+}
+
+function canPlace(index, type) {
+  return Object.hasOwn(pipePorts, type) && (!riseByPort[type] || heightAt(index) < maxHeight);
 }
 
 const highlight = new THREE.LineLoop(
@@ -574,8 +684,10 @@ let selection;
 
 function select(x, z) {
   selection = [x, z];
-  highlight.position.set(world(x), 0, world(z));
-  highlight.material.color.setHex(editable(x, z) ? 0x8cf1d9 : 0xefb171);
+  const index = key(x, z);
+  const allowed = editable(x, z) && (level.pipes.has(index) || canPlace(index, tool));
+  highlight.position.set(world(x), heightAt(index) * heightStep, world(z));
+  highlight.material.color.setHex(allowed ? 0x8cf1d9 : 0xefb171);
   highlight.visible = true;
 }
 
@@ -630,6 +742,7 @@ for (const button of buttons) {
     if (button.hidden) return;
     tool = button.dataset.tool;
     for (const item of buttons) item.setAttribute('aria-pressed', String(item === button));
+    if (highlight.visible) select(...selection);
   });
 }
 
@@ -762,6 +875,38 @@ homeButton.addEventListener('click', () => {
 });
 
 const levelSelect = document.querySelector('#level');
+const heightControl = document.querySelector('#height-control');
+const heightGuide = document.querySelector('#height-guide');
+const guideGeometry = new THREE.BufferGeometry();
+const guideLines = new THREE.LineSegments(guideGeometry,
+  new THREE.LineBasicMaterial({ color: 0x90e7d1, transparent: true, opacity: 0.72, toneMapped: false }));
+scene.add(guideLines);
+
+function updateHeightGuide() {
+  guideLines.visible = heightGuide.value !== '';
+  if (!guideLines.visible) return;
+  const points = [];
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const index = key(x, z);
+      const height = heightAt(index);
+      if (height !== Number(heightGuide.value) || level.blocked.has(index)) continue;
+      const edge = 0.42;
+      const y = height * heightStep + 0.018;
+      const corners = [[-edge, -edge], [edge, -edge], [edge, edge], [-edge, edge]];
+      for (let i = 0; i < 4; i++) {
+        for (const [dx, dz] of [corners[i], corners[(i + 1) % 4]]) {
+          points.push(world(x) + dx, y, world(z) + dz);
+        }
+      }
+    }
+  }
+  guideGeometry.dispose();
+  guideGeometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+  guideGeometry.computeBoundingSphere();
+}
+
+heightGuide.addEventListener('change', updateHeightGuide);
 
 function clearSteamAndSelection() {
   selection = [level.source[0] + 1, Math.max(0, level.source[1] - 1)];
@@ -779,14 +924,31 @@ function selectLevel(index) {
   overhead = false;
   updateView();
   const advanced = level.machines.size > 1;
-  document.querySelector('#receiver-name').textContent = advanced ? 'Machines' : level.name;
-  document.querySelector('#fixed-legend').hidden = !advanced;
-  document.querySelector('#goal').textContent = advanced
-    ? 'Power every machine and seal every open branch. Blue pipes are fixed.'
-    : `Connect the boiler to the ${level.name.toLowerCase()}. Tap a placed pipe to turn it.`;
+  const raised = level.heights.size > 0;
+  const machineName = level.machineName ?? level.name;
+  document.querySelector('#receiver-name').textContent = advanced ? 'Machines' : machineName;
+  document.querySelector('#fixed-legend').hidden = !advanced && !raised;
+  const goal = document.querySelector('#goal');
+  if (raised) {
+    goal.textContent = advanced
+      ? 'Feed both machines across three heights. Seal every branch.'
+      : 'Place the riser on the lower tile. Turn its high end toward the raised deck.';
+  } else {
+    goal.textContent = advanced
+      ? 'Power every machine and seal every open branch. Blue pipes are fixed.'
+      : `Connect the boiler to the ${machineName.toLowerCase()}. Tap a placed pipe to turn it.`;
+  }
+  heightGuide.value = '';
+  heightControl.hidden = !raised;
+  heightGuide.querySelector('[value="2"]').disabled = ![...level.heights.values()].includes(2);
+  updateHeightGuide();
   for (const button of buttons) {
     if (['tee', 'cross'].includes(button.dataset.tool)) {
       button.hidden = !level.junctions?.includes(button.dataset.tool);
+    } else if (button.dataset.tool === 'riser') {
+      button.hidden = !raised;
+    } else if (button.dataset.tool === 'riser-elbow') {
+      button.hidden = !level.bendRisers;
     }
   }
   clearSteamAndSelection();
