@@ -11,7 +11,16 @@
   <main>
     <header>
       <div><p class="eyebrow">THE PIPE WORKSHOP</p><h1>Steam Tycoon</h1></div>
-      <button id="reset" type="button">Reset board</button>
+      <div class="board-controls">
+        <label class="level-picker" for="level">Board
+          <select id="level">
+            <option value="0">1 · Flywheel</option>
+            <option value="1">2 · Ventilation fan</option>
+            <option value="2">3 · Steam press</option>
+          </select>
+        </label>
+        <button id="reset" type="button">Reset board</button>
+      </div>
     </header>
     <section id="workshop" aria-label="Steam pipe puzzle">
       <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate a tile, and Delete to remove a pipe."></div>
@@ -19,10 +28,10 @@
         <span class="indicator"></span>
         <p id="status" role="status">Boiler on · Flywheel idle</p>
       </div>
-      <div class="legend"><span>● Boiler</span><span>◉ Flywheel</span></div>
+      <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span></div>
     </section>
     <section class="controls" aria-label="Pipe tools">
-      <div class="instructions"><h2>Build a steam line</h2><p>Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
+      <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
       <div class="tools" role="group" aria-label="Select a tool">
         <button type="button" data-tool="straight" aria-pressed="true"><span aria-hidden="true">━</span> Straight</button>
         <button type="button" data-tool="elbow" aria-pressed="false"><span aria-hidden="true">┗</span> Elbow</button>

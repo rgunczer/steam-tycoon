@@ -1,17 +1,20 @@
 import * as THREE from "./vendor/three.module.min.js";
 
 const size = 6;
-const source = [0, 4];
-const destination = [5, 1];
-const obstacles = [[3, 4], [3, 2], [4, 3]];
+const levels = [
+  { name: 'Flywheel', action: 'spinning', source: [0, 4], destination: [5, 1],
+    obstacles: [[3, 4], [3, 2], [4, 3]], build: buildFlywheel },
+  { name: 'Ventilation fan', action: 'ventilating', source: [0, 1], destination: [5, 4],
+    obstacles: [[3, 0], [3, 1], [3, 2], [3, 3], [3, 5], [1, 3]], build: buildFan },
+  { name: 'Steam press', action: 'stamping', source: [0, 5], destination: [5, 0],
+    obstacles: [[3, 5], [2, 3], [2, 2], [4, 4], [4, 3], [4, 2], [4, 1]], build: buildPress },
+];
 const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const pipePorts = { straight: [0, 2], elbow: [0, 1] };
 const key = (x, z) => z * size + x;
 const inside = (x, z) => x >= 0 && z >= 0 && x < size && z < size;
 const world = n => n - (size - 1) / 2;
-const sourceKey = key(...source);
-const destinationKey = key(...destination);
-const blocked = new Set(obstacles.map(position => key(...position)));
+let level;
 const pipeHeight = 0.27;
 const stage = document.querySelector('#stage');
 const workshop = document.querySelector('#workshop');
@@ -19,23 +22,23 @@ const status = document.querySelector('#status');
 
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera();
-camera.position.set(3.2, 8.2, 9.7);
+camera.position.set(2.6, 8.8, 9.4);
 camera.lookAt(0, 0, 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.35;
+renderer.toneMappingExposure = 1.22;
 stage.append(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xbbd9e5, 0x594031, 1.65));
-const sun = new THREE.DirectionalLight(0xffd0a1, 3.1);
-sun.position.set(-4, 7, 3);
+scene.add(new THREE.HemisphereLight(0xb9d4dc, 0x685143, 1.35));
+const sun = new THREE.DirectionalLight(0xffc58e, 3.45);
+sun.position.set(-4, 7, 2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(1536, 1536);
 Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 20 });
-sun.shadow.normalBias = 0.025;
+sun.shadow.normalBias = 0.022;
 sun.shadow.bias = -0.0002;
 scene.add(sun);
 const rim = new THREE.DirectionalLight(0x68c8ca, 1.55);
@@ -54,7 +57,6 @@ const teal = material(0x376e65, 0.42);
 const collarActive = brass.clone();
 collarActive.emissive.setHex(0x9c470c);
 collarActive.emissiveIntensity = 0.58;
-const lampMaterial = material(0x5c351c, 0.1);
 const boltGeometry = new THREE.CylinderGeometry(0.047, 0.047, 0.035, 6);
 
 function mesh(geometry, finish, parent, x = 0, y = 0, z = 0) {
@@ -77,10 +79,10 @@ function cylinder(parent, finish, radius, length, x, y, z, axis = 'y') {
   return object;
 }
 
-function atTile(x, z) {
+function atTile(x, z, parent = scene) {
   const group = new THREE.Group();
   group.position.set(world(x), 0, world(z));
-  scene.add(group);
+  parent.add(group);
   return group;
 }
 
@@ -90,10 +92,18 @@ function bolts(parent, spread, height) {
   }
 }
 
+const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.32 }), scene, 0, -0.91, 0);
+floor.rotation.x = -Math.PI / 2;
+floor.castShadow = false;
 box(scene, dark, 6.64, 0.49, 6.64, 0, -0.36, 0);
+box(scene, frame, 6.69, 0.085, 6.69, 0, -0.53, 0);
+box(scene, brass, 1.48, 0.19, 0.05, 0, -0.323, 3.32);
+box(scene, dark, 1.35, 0.105, 0.06, 0, -0.323, 3.348);
 box(scene, frame, 6.73, 0.14, 6.73, 0, -0.11, 0);
 for (const x of [-3.19, 3.19]) {
   for (const z of [-3.19, 3.19]) {
+    box(scene, teal, 0.49, 0.4, 0.49, x * 0.88, -0.70, z * 0.88);
+    box(scene, frame, 0.57, 0.08, 0.57, x * 0.88, -0.86, z * 0.88);
     box(scene, teal, 0.29, 0.16, 0.29, x, -0.035, z);
     mesh(boltGeometry, brass, scene, x, 0.06, z);
   }
@@ -105,7 +115,10 @@ const grainPixels = new Uint8Array(grainSize * grainSize * 4);
 let seed = 714;
 for (let i = 0; i < grainPixels.length; i += 4) {
   seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-  const shade = 212 + (seed >>> 27);
+  const x = (i / 4) % grainSize;
+  const y = Math.floor(i / 4 / grainSize);
+  const wear = 11 * Math.sin(x * 0.21 + Math.cos(y * 0.12)) + 7 * Math.cos(y * 0.31 + x * 0.17);
+  const shade = 191 + (seed >>> 27) + wear;
   grainPixels.set([shade, shade, shade, 255], i);
 }
 const grain = new THREE.DataTexture(grainPixels, grainSize, grainSize);
@@ -115,62 +128,151 @@ grain.generateMipmaps = true;
 grain.needsUpdate = true;
 
 const tileFinishes = [0x585552, 0x4e4d48, 0x565450, 0x4c4b48].map(color => material(color, 0.23, 0.81));
-for (const finish of tileFinishes) finish.map = grain;
-const tileGeometry = new THREE.BoxGeometry(0.968, 0.115, 0.968);
+for (const finish of tileFinishes) {
+  finish.map = grain;
+  finish.bumpMap = grain;
+  finish.bumpScale = 0.012;
+}
+frame.roughnessMap = grain;
+iron.roughnessMap = grain;
+const tileShape = new THREE.Shape().moveTo(-0.46, -0.46).lineTo(0.46, -0.46)
+  .lineTo(0.46, 0.46).lineTo(-0.46, 0.46).closePath();
+const tileGeometry = new THREE.ExtrudeGeometry(tileShape, {
+  depth: 0.08, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.024, bevelSegments: 2,
+});
+tileGeometry.rotateX(-Math.PI / 2);
+const tilePositions = tileGeometry.attributes.position;
+const tileUvs = tileGeometry.attributes.uv;
+for (let i = 0; i < tilePositions.count; i++) {
+  tileUvs.setXY(i, tilePositions.getX(i) + 0.5, tilePositions.getZ(i) + 0.5);
+}
 for (let z = 0; z < size; z++) {
   for (let x = 0; x < size; x++) {
-    const tile = mesh(tileGeometry, tileFinishes[(x * 7 + z * 11 + x * z) % 4], scene, world(x), -0.058, world(z));
+    const tile = mesh(tileGeometry, tileFinishes[(x * 7 + z * 11 + x * z) % 4], scene, world(x), -0.101, world(z));
     tile.userData.position = [x, z];
     tiles.push(tile);
   }
 }
-for (const [x, z] of obstacles) {
-  const block = atTile(x, z);
-  box(block, dark, 0.83, 0.09, 0.83, 0, 0.05, 0);
-  box(block, frame, 0.74, 0.34, 0.74, 0, 0.22, 0);
-  box(block, iron, 0.75, 0.055, 0.75, 0, 0.41, 0);
-  bolts(block, 0.27, 0.455);
+function buildLevel(definition) {
+  const group = new THREE.Group();
+  group.visible = false;
+  scene.add(group);
+  for (const [x, z] of definition.obstacles) {
+    const block = atTile(x, z, group);
+    box(block, dark, 0.83, 0.09, 0.83, 0, 0.05, 0);
+    box(block, frame, 0.74, 0.34, 0.74, 0, 0.22, 0);
+    box(block, iron, 0.75, 0.055, 0.75, 0, 0.41, 0);
+    bolts(block, 0.27, 0.455);
+  }
+
+  const boiler = atTile(...definition.source, group);
+  box(boiler, frame, 0.85, 0.09, 0.85, 0, 0.05, 0);
+  bolts(boiler, 0.32, 0.105);
+  cylinder(boiler, brass, 0.32, 0.62, 0, 0.43, 0);
+  for (const y of [0.17, 0.69]) cylinder(boiler, iron, 0.344, 0.075, 0, y, 0);
+  const dome = mesh(new THREE.SphereGeometry(0.31, 24, 12), brass, boiler, 0, 0.72, 0);
+  dome.scale.y = 0.46;
+  cylinder(boiler, iron, 0.06, 0.12, 0, 0.875, 0);
+  cylinder(boiler, brass, 0.102, 0.037, 0, 0.938, 0);
+  cylinder(boiler, iron, 0.115, 0.31, 0.345, pipeHeight, 0, 'x');
+  cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
+  cylinder(boiler, brass, 0.345, 0.035, 0, 0.28, 0);
+  cylinder(boiler, brass, 0.345, 0.035, 0, 0.59, 0);
+  cylinder(boiler, brass, 0.094, 0.06, 0, 0.55, 0.318, 'z');
+  cylinder(boiler, material(0xe9d4a7, 0.1), 0.075, 0.01, 0, 0.55, 0.353, 'z');
+  box(boiler, dark, 0.013, 0.09, 0.006, 0, 0.558, 0.36).rotation.z = -0.6;
+
+  const receiver = atTile(...definition.destination, group);
+  box(receiver, teal, 0.92, 0.12, 0.94, 0, 0.06, 0);
+  bolts(receiver, 0.36, 0.134);
+  cylinder(receiver, iron, 0.11, 0.36, -0.32, pipeHeight, 0, 'x');
+  cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
+  cylinder(receiver, brass, 0.05, 0.38, -0.29, 0.39, -0.32);
+  cylinder(receiver, iron, 0.065, 0.045, -0.29, 0.58, -0.32);
+  const lampMaterial = material(0x5c351c, 0.1);
+  const lamp = mesh(new THREE.SphereGeometry(0.056, 16, 10), lampMaterial, receiver, -0.29, 0.36, 0.32);
+  const lampLight = new THREE.PointLight(0xffa33e, 0, 1.35);
+  lampLight.position.copy(lamp.position);
+  receiver.add(lampLight);
+
+  return {
+    ...definition, group, lampMaterial, lampLight,
+    vent: { x: receiver.position.x - 0.29, y: 0.61, z: receiver.position.z - 0.32, dx: 0, dz: 0 },
+    animate: definition.build(receiver),
+    sourceKey: key(...definition.source),
+    destinationKey: key(...definition.destination),
+    blocked: new Set(definition.obstacles.map(position => key(...position))),
+    pipes: new Map(), speed: 0, phase: 0,
+  };
 }
 
-const boiler = atTile(...source);
-box(boiler, frame, 0.85, 0.09, 0.85, 0, 0.05, 0);
-bolts(boiler, 0.32, 0.105);
-cylinder(boiler, brass, 0.32, 0.62, 0, 0.43, 0);
-for (const y of [0.17, 0.69]) cylinder(boiler, iron, 0.344, 0.075, 0, y, 0);
-const dome = mesh(new THREE.SphereGeometry(0.31, 24, 12), brass, boiler, 0, 0.72, 0);
-dome.scale.y = 0.46;
-cylinder(boiler, iron, 0.06, 0.12, 0, 0.875, 0);
-cylinder(boiler, brass, 0.102, 0.037, 0, 0.938, 0);
-cylinder(boiler, iron, 0.115, 0.31, 0.345, pipeHeight, 0, 'x');
-cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
+function buildFlywheel(receiver) {
+  cylinder(receiver, iron, 0.155, 0.33, -0.15, 0.38, 0.04, 'x');
+  box(receiver, teal, 0.26, 0.48, 0.23, 0.23, 0.33, -0.05);
+  cylinder(receiver, iron, 0.075, 0.29, 0.23, 0.54, 0.06, 'z');
 
-const receiver = atTile(...destination);
-box(receiver, teal, 0.92, 0.12, 0.94, 0, 0.06, 0);
-bolts(receiver, 0.36, 0.134);
-cylinder(receiver, iron, 0.11, 0.53, -0.235, pipeHeight, 0, 'x');
-cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
-cylinder(receiver, iron, 0.155, 0.33, -0.15, 0.38, 0.04, 'x');
-box(receiver, teal, 0.26, 0.48, 0.23, 0.23, 0.33, -0.05);
-cylinder(receiver, iron, 0.075, 0.29, 0.23, 0.54, 0.06, 'z');
-
-const wheel = new THREE.Group();
-wheel.position.set(0.23, 0.54, 0.19);
-receiver.add(wheel);
-mesh(new THREE.TorusGeometry(0.285, 0.046, 10, 36), brass, wheel);
-cylinder(wheel, brass, 0.08, 0.105, 0, 0, 0, 'z');
-for (let spoke = 0; spoke < 6; spoke++) {
-  const angle = spoke * Math.PI / 3;
-  const bar = box(wheel, iron, 0.051, 0.25, 0.049, -Math.sin(angle) * 0.14, Math.cos(angle) * 0.14, 0);
-  bar.rotation.z = angle;
+  const wheel = new THREE.Group();
+  wheel.position.set(0.23, 0.54, 0.19);
+  receiver.add(wheel);
+  mesh(new THREE.TorusGeometry(0.285, 0.046, 10, 36), brass, wheel);
+  cylinder(wheel, brass, 0.08, 0.105, 0, 0, 0, 'z');
+  for (let spoke = 0; spoke < 6; spoke++) {
+    const angle = spoke * Math.PI / 3;
+    const bar = box(wheel, iron, 0.051, 0.25, 0.049, -Math.sin(angle) * 0.14, Math.cos(angle) * 0.14, 0);
+    bar.rotation.z = angle;
+  }
+  const crank = mesh(new THREE.BoxGeometry(1, 0.045, 0.037), brass, receiver);
+  const piston = cylinder(receiver, iron, 0.041, 0.23, -0.19, 0.38, 0.2, 'x');
+  return phase => {
+    wheel.rotation.z = -phase;
+    const pinX = wheel.position.x + Math.cos(wheel.rotation.z) * 0.147;
+    const pinY = wheel.position.y + Math.sin(wheel.rotation.z) * 0.147;
+    piston.position.x = -0.15 + Math.cos(wheel.rotation.z) * 0.065;
+    const pistonX = piston.position.x + 0.09;
+    const pistonY = piston.position.y;
+    crank.position.set((pinX + pistonX) / 2, (pinY + pistonY) / 2, 0.256);
+    crank.scale.x = Math.hypot(pinX - pistonX, pinY - pistonY);
+    crank.rotation.z = Math.atan2(pinY - pistonY, pinX - pistonX);
+  };
 }
-const crank = mesh(new THREE.BoxGeometry(1, 0.045, 0.037), brass, receiver);
-const piston = cylinder(receiver, iron, 0.041, 0.23, -0.19, 0.38, 0.2, 'x');
-cylinder(receiver, brass, 0.05, 0.38, -0.27, 0.39, -0.22);
-cylinder(receiver, iron, 0.065, 0.045, -0.27, 0.58, -0.22);
-const lamp = mesh(new THREE.SphereGeometry(0.064, 16, 10), lampMaterial, receiver, -0.12, 0.595, 0.27);
-const lampLight = new THREE.PointLight(0xffa33e, 0, 1.35);
-lampLight.position.copy(lamp.position);
-receiver.add(lampLight);
+
+function buildFan(receiver) {
+  box(receiver, teal, 0.48, 0.42, 0.40, 0.08, 0.31, -0.04);
+  cylinder(receiver, iron, 0.34, 0.12, 0.08, 0.64, 0.02, 'z');
+  cylinder(receiver, dark, 0.29, 0.024, 0.08, 0.64, 0.085, 'z');
+  const rotor = new THREE.Group();
+  rotor.position.set(0.08, 0.64, 0.15);
+  receiver.add(rotor);
+  cylinder(rotor, brass, 0.084, 0.09, 0, 0, 0, 'z');
+  for (let i = 0; i < 5; i++) {
+    const blade = new THREE.Group();
+    blade.rotation.z = i * Math.PI * 2 / 5;
+    rotor.add(blade);
+    box(blade, teal, 0.115, 0.23, 0.035, 0.027, 0.16, 0).rotation.z = -0.26;
+  }
+  mesh(new THREE.TorusGeometry(0.32, 0.031, 10, 40), brass, receiver, 0.08, 0.64, 0.18);
+  return phase => { rotor.rotation.z = phase * 1.5; };
+}
+
+function buildPress(receiver) {
+  const enamel = material(0x93492f, 0.40);
+  box(receiver, iron, 0.55, 0.12, 0.46, 0.08, 0.20, 0.07);
+  for (const x of [-0.19, 0.35]) {
+    box(receiver, enamel, 0.09, 0.69, 0.20, x, 0.49, 0.03);
+    cylinder(receiver, brass, 0.036, 0.48, x, 0.47, 0.20);
+  }
+  box(receiver, enamel, 0.68, 0.16, 0.42, 0.08, 0.85, 0.05);
+  cylinder(receiver, iron, 0.15, 0.23, 0.08, 0.87, 0.07);
+  cylinder(receiver, brass, 0.17, 0.045, 0.08, 0.99, 0.07);
+  const ram = new THREE.Group();
+  receiver.add(ram);
+  cylinder(ram, brass, 0.06, 0.38, 0.08, 0.71, 0.07);
+  box(ram, iron, 0.31, 0.11, 0.29, 0.08, 0.52, 0.07);
+  box(receiver, brass, 0.24, 0.038, 0.23, 0.08, 0.28, 0.07);
+  return phase => {
+    ram.position.y = -0.156 * Math.pow((1 - Math.cos(phase * 0.52)) * 0.5, 2);
+  };
+}
 
 function pipeGeometry(type) {
   const radius = 0.108;
@@ -188,13 +290,13 @@ const collarGeometry = new THREE.LatheGeometry([
   new THREE.Vector2(0.134, 0.042), new THREE.Vector2(0.084, 0.042),
   new THREE.Vector2(0.084, -0.042),
 ], 24);
-const pipes = new Map();
+const boards = levels.map(buildLevel);
 let tool = 'straight';
 let powered = false;
 let outlets = [];
 
 function addPipe(x, z, type, rotation, fixed = false) {
-  const group = atTile(x, z);
+  const group = atTile(x, z, level.group);
   group.position.y = pipeHeight;
   mesh(bodies[type], iron, group);
   const collars = pipePorts[type].map(port => {
@@ -205,22 +307,22 @@ function addPipe(x, z, type, rotation, fixed = false) {
     return collar;
   });
   group.rotation.y = -rotation * Math.PI / 2;
-  pipes.set(key(x, z), { type, rotation, fixed, group, collars });
+  level.pipes.set(key(x, z), { type, rotation, fixed, group, collars });
 }
 
 function portsAt(index) {
-  if (index === sourceKey) return [0];
-  if (index === destinationKey) return [2];
-  const pipe = pipes.get(index);
+  if (index === level.sourceKey) return [0];
+  if (index === level.destinationKey) return [2];
+  const pipe = level.pipes.get(index);
   return pipe ? pipePorts[pipe.type].map(port => (port + pipe.rotation) % 4) : [];
 }
 
 function updateFlow() {
-  const active = new Set([sourceKey]);
-  const queue = [sourceKey];
+  const active = new Set([level.sourceKey]);
+  const queue = [level.sourceKey];
   const leaks = [];
   for (const index of queue) {
-    if (index === destinationKey) continue;
+    if (index === level.destinationKey) continue;
     const x = index % size;
     const z = Math.floor(index / size);
     for (const port of portsAt(index)) {
@@ -234,42 +336,44 @@ function updateFlow() {
       }
     }
   }
-  powered = active.has(destinationKey);
+  powered = active.has(level.destinationKey);
   if (powered) {
-    leaks.push({ x: receiver.position.x - 0.27, y: 0.61, z: receiver.position.z - 0.22, dx: 0, dz: 0 });
+    leaks.push(level.vent);
   }
   outlets = leaks;
-  for (const [index, pipe] of pipes) {
+  for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
   }
-  lampMaterial.emissive.setHex(powered ? 0xff9b28 : 0x000000);
-  lampMaterial.emissiveIntensity = 1.8;
-  lampLight.intensity = powered ? 1.75 : 0;
+  level.lampMaterial.emissive.setHex(powered ? 0xff9b28 : 0x000000);
+  level.lampMaterial.emissiveIntensity = 1.8;
+  level.lampLight.intensity = powered ? 1.75 : 0;
   workshop.classList.toggle('powered', powered);
-  status.textContent = powered ? 'Steam delivered · Flywheel running' : 'Boiler on · Flywheel idle';
+  const message = powered ? `Steam delivered · ${level.name} ${level.action}` : `Boiler on · ${level.name} idle`;
+  if (status.textContent !== message) status.textContent = message;
 }
 
 function removePipe(index) {
-  const pipe = pipes.get(index);
-  if (pipe) scene.remove(pipe.group);
-  pipes.delete(index);
+  const pipe = level.pipes.get(index);
+  if (pipe) pipe.group.removeFromParent();
+  level.pipes.delete(index);
 }
 
 function reset() {
-  for (const index of pipes.keys()) removePipe(index);
-  addPipe(1, 4, 'straight', 0, true);
+  for (const index of level.pipes.keys()) removePipe(index);
+  addPipe(level.source[0] + 1, level.source[1], 'straight', 0, true);
+  level.phase = level.speed = 0;
   updateFlow();
 }
 
 function editable(x, z) {
   const index = key(x, z);
-  return index !== sourceKey && index !== destinationKey && !blocked.has(index) && !pipes.get(index)?.fixed;
+  return index !== level.sourceKey && index !== level.destinationKey && !level.blocked.has(index) && !level.pipes.get(index)?.fixed;
 }
 
 function act(x, z, action = tool) {
   if (!editable(x, z)) return;
   const index = key(x, z);
-  const pipe = pipes.get(index);
+  const pipe = level.pipes.get(index);
   if (action === 'remove') removePipe(index);
   else if (pipe) {
     pipe.rotation = (pipe.rotation + 1) % (pipe.type === 'straight' ? 2 : 4);
@@ -288,7 +392,7 @@ highlight.visible = false;
 scene.add(highlight);
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-let selection = [1, 3];
+let selection;
 
 function select(x, z) {
   selection = [x, z];
@@ -365,15 +469,16 @@ let emission = 0;
 
 function animateSteam(dt) {
   emission += dt;
-  if (emission >= 0.055) {
-    emission %= 0.055;
+  if (emission >= (powered ? 0.092 : 0.045)) {
+    emission = 0;
     for (const outlet of outlets) {
       const particle = particles[nextParticle];
       nextParticle = (nextParticle + 1) % particles.length;
       particle.age = 0;
-      particle.dx = outlet.dx * 0.48 + (Math.random() - 0.5) * 0.2;
-      particle.dz = outlet.dz * 0.48 + (Math.random() - 0.5) * 0.2;
+      particle.dx = outlet.dx * 0.78 + (Math.random() - 0.5) * 0.2;
+      particle.dz = outlet.dz * 0.78 + (Math.random() - 0.5) * 0.2;
       particle.sprite.position.set(outlet.x, outlet.y, outlet.z);
+      particle.sprite.material.rotation = Math.random() * Math.PI * 2;
       particle.sprite.visible = true;
     }
   }
@@ -385,23 +490,16 @@ function animateSteam(dt) {
     sprite.position.x += dx * dt * (1 - age * 0.6);
     sprite.position.z += dz * dt * (1 - age * 0.6);
     sprite.position.y += (0.25 + age * 0.53) * dt;
-    sprite.scale.setScalar(0.15 + age * 0.47);
-    sprite.material.opacity = Math.max(0, 0.58 * (1 - age / 1.1));
+    sprite.scale.setScalar(0.13 + age * 0.64);
+    sprite.material.rotation += dt * 0.52;
+    sprite.material.opacity = Math.max(0, 0.68 * (1 - age / 1.1));
   }
 }
 
-let speed = 0;
 function animateMachine(dt) {
-  speed = THREE.MathUtils.damp(speed, powered ? 10 : 0, 4, dt);
-  wheel.rotation.z -= speed * dt;
-  const pinX = wheel.position.x + Math.cos(wheel.rotation.z) * 0.147;
-  const pinY = wheel.position.y + Math.sin(wheel.rotation.z) * 0.147;
-  piston.position.x = -0.15 + Math.cos(wheel.rotation.z) * 0.065;
-  const pistonX = piston.position.x + 0.09;
-  const pistonY = piston.position.y;
-  crank.position.set((pinX + pistonX) / 2, (pinY + pistonY) / 2, 0.256);
-  crank.scale.x = Math.hypot(pinX - pistonX, pinY - pistonY);
-  crank.rotation.z = Math.atan2(pinY - pistonY, pinX - pistonX);
+  level.speed = THREE.MathUtils.damp(level.speed, powered ? 10 : 0, 4, dt);
+  level.phase += level.speed * dt;
+  level.animate(level.phase);
 }
 
 function resize() {
@@ -418,18 +516,34 @@ function resize() {
   renderer.setSize(width, height, false);
 }
 
-document.querySelector('#reset').addEventListener('click', () => {
-  reset();
-  selection = [1, 3];
+const levelSelect = document.querySelector('#level');
+
+function clearSteamAndSelection() {
+  selection = [level.source[0] + 1, Math.max(0, level.source[1] - 1)];
   highlight.visible = false;
   buttons[0].click();
-  speed = 0;
-  wheel.rotation.z = 0;
   for (const { sprite } of particles) sprite.visible = false;
+}
+
+function selectLevel(index) {
+  if (level) level.group.visible = false;
+  level = boards[index];
+  level.group.visible = true;
+  document.querySelector('#receiver-name').textContent = level.name;
+  document.querySelector('#goal').textContent = `Connect the boiler to the ${level.name.toLowerCase()}. Tap a placed pipe to turn it.`;
+  clearSteamAndSelection();
+  if (level.pipes.size) updateFlow();
+  else reset();
+}
+
+levelSelect.addEventListener('change', () => selectLevel(Number(levelSelect.value)));
+document.querySelector('#reset').addEventListener('click', () => {
+  reset();
+  clearSteamAndSelection();
 });
 new ResizeObserver(resize).observe(stage);
 resize();
-reset();
+selectLevel(Number(levelSelect.value));
 let previous = performance.now();
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - previous) / 1000, 0.05);
