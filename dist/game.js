@@ -46,7 +46,7 @@ const levels = [
   },
   {
     name: 'Upper gallery', view: [-36, 57], source: [0, 2], destination: [5, 2],
-    machineName: 'Ventilation fan', action: 'ventilating', build: buildFan, obstacles: [],
+    machineName: 'Twin compressor', action: 'compressing', build: buildCompressor, obstacles: [],
     terrain: [...wallColumn(3, 1), ...wallColumn(4, 2), [5, 2, 2, 'wall']],
     fixed: [[4, 2, 'straight', 0]],
   },
@@ -58,14 +58,14 @@ const levels = [
   },
   {
     name: 'Foundry steps', view: [-35, 60], source: [0, 4], destination: [5, 2],
-    machineName: 'Flywheel', action: 'spinning', build: buildFlywheel, bendRisers: true,
+    machineName: 'Beam pump', action: 'pumping', build: buildBeamPump, bendRisers: true,
     terrain: [[2, 3, 1], [2, 2, 2], [3, 2, 2], [4, 2, 1], [5, 2, 1]],
     obstacles: [[3, 3], [3, 4], [2, 1], [3, 1], [4, 1]],
     fixed: [[4, 2, 'riser', 2]],
   },
   {
     name: 'Over the parapet', view: [-40, 61], source: [0, 4], destination: [5, 3],
-    machineName: 'Ventilation fan', action: 'ventilating', build: buildFan, bendRisers: true,
+    machineName: 'Centrifugal governor', action: 'regulating', build: buildGovernor, bendRisers: true,
     terrain: [...wallColumn(3, 1).filter(([, z]) => z !== 3),
       [3, 3, 2], [4, 3, 1], [5, 3, 1, 'wall']],
     obstacles: [[2, 2], [4, 2], [4, 4]],
@@ -106,7 +106,6 @@ const status = document.querySelector('#status');
 const pressureMeter = document.querySelector('#pressure');
 const pressureReadout = document.querySelector('#pressure-value');
 const pressureHand = document.querySelector('#pressure-hand');
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 40);
@@ -191,6 +190,8 @@ const fixedPipeFinish = material(0x468e9f, 0.48, 0.4);
 const collarActive = brass.clone();
 collarActive.emissive.setHex(0x9c470c);
 collarActive.emissiveIntensity = 0.58;
+const deckRail = material(0x49362b, 0.64, 0.59);
+const machineryRed = material(0x98412d, 0.48, 0.48);
 const rivetGeometry = new THREE.SphereGeometry(0.022, 8, 6);
 const boltGeometry = new THREE.CylinderGeometry(0.047, 0.047, 0.035, 6);
 
@@ -255,6 +256,21 @@ box(scene, frame, 6.69, 0.085, 6.69, 0, -0.53, 0);
 box(scene, brass, 1.48, 0.19, 0.05, 0, -0.323, 3.32);
 box(scene, dark, 1.35, 0.105, 0.06, 0, -0.323, 3.348);
 castBlock(scene, frame, 6.73, 0.15, 6.73, 0, -0.11, 0, 0.045);
+for (let side = 0; side < 4; side++) {
+  const rail = new THREE.Group();
+  rail.rotation.y = side * Math.PI / 2;
+  scene.add(rail);
+  castBlock(rail, deckRail, 5.87, 0.056, 0.18, 0, -0.034, 3.17, 0.016);
+  box(rail, brass, 5.72, 0.012, 0.015, 0, -0.004, 3.23);
+  for (const x of [-2.7, -1.8, -0.9, 0, 0.9, 1.8, 2.7]) {
+    mesh(rivetGeometry, bronze, rail, x, -0.009, 3.16);
+  }
+  for (const x of [-2.35, 2.35]) {
+    castBlock(rail, teal, 0.48, 0.21, 0.062, x, -0.31, 3.327, 0.025);
+    mesh(rivetGeometry, brass, rail, x - 0.16, -0.31, 3.366);
+    mesh(rivetGeometry, brass, rail, x + 0.16, -0.31, 3.366);
+  }
+}
 for (const x of [-3.19, 3.19]) {
   for (const z of [-3.19, 3.19]) {
     box(scene, teal, 0.49, 0.4, 0.49, x * 0.88, -0.70, z * 0.88);
@@ -315,6 +331,26 @@ function surfaceTexture(kind) {
       pixels.set([Math.min(255, shade + warmth), shade, shade - warmth, 255], i);
     }
   }
+  // Offset paired dark and bright strokes give scratches a lip that also catches the normal lighting.
+  const brushed = kind === 'brushed';
+  const scratchCount = brushed ? 105 : 37;
+  for (let i = 0; i < scratchCount; i++) {
+    const x = Math.floor(random() * textureSize);
+    const y = Math.floor(random() * textureSize);
+    const length = 3 + Math.floor(random() * (brushed ? 23 : 13));
+    const slope = (random() - 0.5) * (brushed ? 0.08 : 1.2);
+    for (let step = 0; step < length; step++) {
+      const row = y + Math.round(step * slope);
+      const col = (x + step) & (textureSize - 1);
+      const wear = Math.sin(Math.PI * step / length) * (brushed ? 19 : 32);
+      for (const [offset, amount] of [[0, -wear], [1, wear * 0.48]]) {
+        const base = (((row + offset) & (textureSize - 1)) * textureSize + col) * 4;
+        for (let channel = 0; channel < 3; channel++) {
+          pixels[base + channel] = THREE.MathUtils.clamp(pixels[base + channel] + amount, 0, 255);
+        }
+      }
+    }
+  }
   const albedo = new THREE.DataTexture(pixels, textureSize, textureSize);
   albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
   albedo.magFilter = THREE.LinearFilter;
@@ -331,13 +367,13 @@ const castTexture = surfaceTexture('cast');
 const brushedTexture = surfaceTexture('brushed');
 const enamelTexture = surfaceTexture('enamel');
 const tileFinishes = [0x655c52, 0x5a5753, 0x635b54, 0x57544e].map(color => material(color, 0.23, 0.81));
-for (const finish of [...tileFinishes, frame, deckFinish, wallFinish, platformFinish, castSteel]) {
+for (const finish of [...tileFinishes, frame, deckRail, deckFinish, wallFinish, platformFinish, castSteel]) {
   Object.assign(finish, castTexture, { bumpScale: 0.022 });
 }
 for (const finish of [iron, bronze, brass, collarActive, riserFinish]) {
   Object.assign(finish, brushedTexture, { bumpScale: 0.009 });
 }
-for (const finish of [teal, fixedPipeFinish]) {
+for (const finish of [teal, machineryRed, fixedPipeFinish]) {
   Object.assign(finish, enamelTexture, { bumpScale: 0.012 });
 }
 const tileShape = new THREE.Shape().moveTo(-0.46, -0.46).lineTo(0.46, -0.46)
@@ -517,10 +553,17 @@ function buildReceiver(group, position, port, build, height) {
   const ventPosition = new THREE.Vector3(-0.29, 0.61, -0.32)
     .applyAxisAngle(new THREE.Vector3(0, 1, 0), receiver.rotation.y)
     .add(receiver.position);
+  const mechanism = new THREE.Group();
+  receiver.add(mechanism);
+  // Leave the inlet and mounting plate at their exact tile height.
+  if ([buildFlywheel, buildFan, buildPress].includes(build)) {
+    mechanism.scale.y = 1.23;
+    mechanism.position.y = -0.037;
+  }
   return {
     port, lampMaterial, lampLight,
     vent: { ...ventPosition, dx: 0, dz: 0 },
-    animate: build(receiver), powered: false, speed: 0, phase: 0,
+    animate: build(mechanism), powered: false, speed: 0, phase: 0,
   };
 }
 
@@ -594,6 +637,124 @@ function buildPress(receiver) {
   };
 }
 
+function positionRod(rod, a, b) {
+  const axis = new THREE.Vector3().subVectors(b, a);
+  rod.position.copy(a).addScaledVector(axis, 0.5);
+  rod.scale.y = axis.length();
+  rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis.normalize());
+}
+
+function buildCompressor(machine) {
+  castBlock(machine, teal, 0.78, 0.19, 0.56, 0, 0.26, 0, 0.04);
+  box(machine, castSteel, 0.75, 0.44, 0.14, 0, 1.01, -0.20);
+  const crankshaft = cylinder(machine, iron, 0.072, 0.77, 0, 0.50, 0.16, 'x');
+  const eccentrics = [-0.22, 0.22].map((x, index) => {
+    cylinder(machine, machineryRed, 0.158, 0.34, x, 1.08, 0.12);
+    for (let fin = 0; fin < 5; fin++) {
+      cylinder(machine, castSteel, 0.182, 0.024, x, 0.96 + fin * 0.059, 0.12);
+    }
+    cylinder(machine, brass, 0.108, 0.07, x, 1.27, 0.12);
+    const cam = new THREE.Group();
+    cam.position.set(x, 0.50, 0.16);
+    machine.add(cam);
+    cylinder(cam, bronze, 0.15, 0.061, 0, 0, 0, 'x');
+    cylinder(cam, brass, 0.043, 0.13, 0.015, 0.10, 0, 'x');
+    const piston = cylinder(machine, iron, 0.052, 0.24, x, 0.87, 0.12);
+    const rod = cylinder(machine, brass, 0.023, 1, x, 0.7, 0.12);
+    const a = new THREE.Vector3(x, 0, 0);
+    const b = new THREE.Vector3(x, 0, 0.12);
+    return phase => {
+      const angle = phase + index * Math.PI;
+      const lift = Math.cos(angle) * 0.088;
+      cam.rotation.x = angle;
+      a.set(x, 0.50 + Math.cos(angle) * 0.10, 0.16 + Math.sin(angle) * 0.10);
+      piston.position.y = 0.88 + lift;
+      b.y = piston.position.y - 0.11;
+      positionRod(rod, a, b);
+    };
+  });
+  cylinder(machine, bronze, 0.049, 0.49, 0, 1.34, 0.12, 'x');
+  return phase => {
+    crankshaft.rotation.set(phase, 0, Math.PI / 2);
+    for (const move of eccentrics) move(phase);
+  };
+}
+
+function buildBeamPump(machine) {
+  castBlock(machine, teal, 0.78, 0.14, 0.62, 0, 0.23, 0, 0.03);
+  castBlock(machine, castSteel, 0.23, 0.99, 0.31, 0, 0.77, -0.16, 0.037);
+  const beam = new THREE.Group();
+  beam.position.set(0, 1.28, 0.07);
+  machine.add(beam);
+  castBlock(beam, machineryRed, 0.92, 0.14, 0.17, 0, 0, 0, 0.028);
+  cylinder(beam, brass, 0.085, 0.20, 0, 0, 0, 'z');
+  const pumps = [-0.33, 0.33].map(x => {
+    cylinder(machine, bronze, 0.118, 0.40, x, 0.49, 0.09);
+    cylinder(machine, brass, 0.14, 0.055, x, 0.69, 0.09);
+    const plunger = cylinder(machine, iron, 0.051, 0.33, x, 0.79, 0.09);
+    const rod = cylinder(machine, brass, 0.029, 1, x, 1, 0.09);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3(x, 0, 0.09);
+    return angle => {
+      a.set(x * Math.cos(angle), 1.28 + x * Math.sin(angle), 0.09);
+      plunger.position.y = 0.80 + x * Math.sin(angle);
+      b.y = plunger.position.y + 0.15;
+      positionRod(rod, a, b);
+    };
+  });
+  const wheel = new THREE.Group();
+  wheel.position.set(0, 0.56, 0.26);
+  machine.add(wheel);
+  mesh(new THREE.TorusGeometry(0.225, 0.032, 8, 28), brass, wheel);
+  for (let i = 0; i < 3; i++) {
+    box(wheel, castSteel, 0.024, 0.42, 0.035, 0, 0, 0).rotation.z = i * Math.PI / 3;
+  }
+  return phase => {
+    const angle = Math.sin(phase * 0.67) * 0.28;
+    beam.rotation.z = angle;
+    wheel.rotation.z = -phase * 0.67;
+    for (const move of pumps) move(angle);
+  };
+}
+
+function buildGovernor(machine) {
+  castBlock(machine, machineryRed, 0.74, 0.24, 0.63, 0, 0.29, 0, 0.044);
+  cylinder(machine, castSteel, 0.095, 0.96, 0, 0.82, -0.23);
+  cylinder(machine, brass, 0.105, 0.055, 0, 1.32, -0.23);
+  cylinder(machine, bronze, 0.065, 0.27, 0, 1.27, -0.115, 'z');
+  const spindle = new THREE.Group();
+  spindle.position.y = 1.27;
+  machine.add(spindle);
+  cylinder(spindle, bronze, 0.041, 0.60, 0, -0.24, 0);
+  const sleeve = cylinder(spindle, brass, 0.089, 0.128, 0, -0.36, 0);
+  const arms = [-1, 1].map(sign => {
+    const arm = new THREE.Group();
+    spindle.add(arm);
+    cylinder(arm, brass, 0.024, 0.44, 0, -0.21, 0);
+    mesh(new THREE.SphereGeometry(0.105, 14, 9), bronze, arm, 0, -0.43, 0);
+    const link = cylinder(spindle, castSteel, 0.019, 1, 0, -0.35, 0);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    return spread => {
+      arm.rotation.z = sign * spread;
+      a.set(sign * Math.sin(spread) * 0.34, -Math.cos(spread) * 0.34, 0);
+      b.set(0, sleeve.position.y, 0);
+      positionRod(link, a, b);
+    };
+  });
+  const pulley = cylinder(machine, bronze, 0.25, 0.08, 0, 0.44, 0);
+  for (let i = 0; i < 4; i++) {
+    mesh(boltGeometry, brass, pulley, Math.cos(i * Math.PI / 2) * 0.18, 0.051, Math.sin(i * Math.PI / 2) * 0.18);
+  }
+  return (phase, speed) => {
+    const spread = 0.53 + 0.45 * Math.min(1, speed / 10) + Math.sin(phase) * 0.02;
+    spindle.rotation.y = phase * 1.12;
+    pulley.rotation.y = phase * 1.12;
+    sleeve.position.y = -0.41 + Math.sin(spread) * 0.18;
+    for (const move of arms) move(spread);
+  };
+}
+
 function pipeGeometry(type) {
   const radius = 0.116;
   const start = new THREE.Vector3(0.5, 0, 0);
@@ -632,6 +793,7 @@ const boards = [];
 let tool = 'straight';
 let powered = false;
 let outlets = [];
+let warmJoints = [];
 
 function heightAt(index) {
   return level.heights.get(index) ?? 0;
@@ -688,6 +850,7 @@ function updateFlow() {
   const active = new Set([level.sourceKey]);
   const queue = [level.sourceKey];
   const leaks = [];
+  const joints = [];
   for (const index of queue) {
     if (level.machines.has(index)) continue;
     const x = index % size;
@@ -705,6 +868,12 @@ function updateFlow() {
       } else if (!active.has(next)) {
         active.add(next);
         queue.push(next);
+        if (level.pipes.has(index) && level.pipes.has(next)) {
+          joints.push({
+            x: world(x) + 0.49 * dx, y: pipeHeight + height * heightStep + 0.13,
+            z: world(z) + 0.49 * dz, dx: dz * 0.20, dz: -dx * 0.20,
+          });
+        }
       }
     }
   }
@@ -726,6 +895,7 @@ function updateFlow() {
   pressureMeter.setAttribute('aria-valuenow', String(level.targetPressure));
   pressureReadout.textContent = `${level.targetPressure}%`;
   outlets = leaks;
+  warmJoints = joints;
   for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
   }
@@ -751,7 +921,7 @@ function reset() {
   for (const [x, z, type, rotation] of level.fixed ?? []) addPipe(x, z, type, rotation, true);
   for (const machine of level.machines.values()) {
     machine.phase = machine.speed = 0;
-    machine.animate(0);
+    machine.animate(0, 0);
   }
   updateFlow();
 }
@@ -856,50 +1026,63 @@ for (const button of buttons) {
 const vapor = document.createElement('canvas');
 vapor.width = vapor.height = 64;
 const paint = vapor.getContext('2d');
-const gradient = paint.createRadialGradient(32, 32, 2, 32, 32, 32);
-gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
-gradient.addColorStop(0.45, 'rgba(255,255,255,0.44)');
-gradient.addColorStop(1, 'rgba(255,255,255,0)');
-paint.fillStyle = gradient;
-paint.fillRect(0, 0, 64, 64);
+for (const [x, y, radius, alpha] of [[32, 31, 24, 0.66], [23, 28, 17, 0.44], [40, 38, 19, 0.45], [35, 20, 15, 0.35]]) {
+  const cloud = paint.createRadialGradient(x, y, 1, x, y, radius);
+  cloud.addColorStop(0, `rgba(255,255,255,${alpha})`);
+  cloud.addColorStop(1, 'rgba(255,255,255,0)');
+  paint.fillStyle = cloud;
+  paint.fillRect(0, 0, 64, 64);
+}
 const vaporTexture = new THREE.CanvasTexture(vapor);
-const particles = Array.from({ length: 48 }, () => {
+const particles = Array.from({ length: 72 }, () => {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: vaporTexture, color: 0xe2edec, transparent: true, depthWrite: false,
   }));
   sprite.visible = false;
   scene.add(sprite);
-  return { sprite, age: 2, dx: 0, dz: 0 };
+  return { sprite, age: 0, dx: 0, dz: 0, wisp: false };
 });
 let nextParticle = 0;
 let emission = 0;
+let nextWisp = 0.84;
+
+function emitSteam(outlet, wisp = false) {
+  const particle = particles[nextParticle];
+  nextParticle = (nextParticle + 1) % particles.length;
+  particle.age = 0;
+  particle.wisp = wisp;
+  particle.dx = outlet.dx * 0.78 + (Math.random() - 0.5) * 0.2;
+  particle.dz = outlet.dz * 0.78 + (Math.random() - 0.5) * 0.2;
+  particle.sprite.position.set(outlet.x, outlet.y, outlet.z);
+  particle.sprite.material.rotation = Math.random() * Math.PI * 2;
+  particle.sprite.visible = true;
+}
 
 function animateSteam(dt) {
   emission += dt;
   if (emission >= (powered ? 0.092 : 0.045)) {
     emission = 0;
-    for (const outlet of outlets) {
-      const particle = particles[nextParticle];
-      nextParticle = (nextParticle + 1) % particles.length;
-      particle.age = 0;
-      particle.dx = outlet.dx * 0.78 + (Math.random() - 0.5) * 0.2;
-      particle.dz = outlet.dz * 0.78 + (Math.random() - 0.5) * 0.2;
-      particle.sprite.position.set(outlet.x, outlet.y, outlet.z);
-      particle.sprite.material.rotation = Math.random() * Math.PI * 2;
-      particle.sprite.visible = true;
+    for (const outlet of outlets) emitSteam(outlet);
+  }
+  if (warmJoints.length) {
+    nextWisp -= dt;
+    if (nextWisp <= 0) {
+      nextWisp = 0.85 + Math.random() * 1.5;
+      emitSteam(warmJoints[Math.floor(Math.random() * warmJoints.length)], true);
     }
   }
   for (const particle of particles) {
     if (!particle.sprite.visible) continue;
     particle.age += dt;
-    const { sprite, age, dx, dz } = particle;
-    sprite.visible = age < 1.1;
+    const { sprite, age, dx, dz, wisp } = particle;
+    const life = wisp ? 0.86 : 1.1;
+    sprite.visible = age < life;
     sprite.position.x += dx * dt * (1 - age * 0.6);
     sprite.position.z += dz * dt * (1 - age * 0.6);
     sprite.position.y += (0.25 + age * 0.53) * dt;
-    sprite.scale.setScalar(0.13 + age * 0.64);
+    sprite.scale.setScalar(wisp ? 0.14 + age * 0.48 : 0.13 + age * 0.64);
     sprite.material.rotation += dt * 0.52;
-    sprite.material.opacity = Math.max(0, 0.68 * (1 - age / 1.1));
+    sprite.material.opacity = Math.max(0, (wisp ? 0.63 : 0.73) * (1 - age / life));
   }
 }
 
@@ -907,35 +1090,26 @@ function animateMachine(dt) {
   for (const machine of level.machines.values()) {
     machine.speed = THREE.MathUtils.damp(machine.speed, machine.powered ? 10 : 0, 4, dt);
     machine.phase += machine.speed * dt;
-    machine.animate(machine.phase);
+    machine.animate(machine.phase, machine.speed);
   }
 }
 
 let gaugeTime = 0;
 function animateGauge(elapsed) {
   const target = level.targetPressure;
-  const moving = !reducedMotion.matches;
-  if (moving) {
-    // Advance the damped spring in real time, even when a frame takes longer to render.
-    const damping = 1.25;
-    const frequency = 1.48;
-    const offset = level.pressure - target;
-    const sineWeight = (level.pressureVelocity + damping * offset) / frequency;
-    const sine = Math.sin(frequency * elapsed);
-    const cosine = Math.cos(frequency * elapsed);
-    const decay = Math.exp(-damping * elapsed);
-    const wave = offset * cosine + sineWeight * sine;
-    level.pressure = target + decay * wave;
-    level.pressureVelocity = decay * (frequency * (sineWeight * cosine - offset * sine) - damping * wave);
-    gaugeTime += elapsed;
-  } else {
-    level.pressure = target;
-    level.pressureVelocity = 0;
-  }
-
-  const flutter = moving
-    ? (Math.sin(gaugeTime * 5.4) * 11 + Math.sin(gaugeTime * 8.7) * 2) * Math.min(1, target / 19)
-    : 0;
+  // Advance the damped spring in real time, even when a frame takes longer to render.
+  const damping = 1.25;
+  const frequency = 1.48;
+  const offset = level.pressure - target;
+  const sineWeight = (level.pressureVelocity + damping * offset) / frequency;
+  const sine = Math.sin(frequency * elapsed);
+  const cosine = Math.cos(frequency * elapsed);
+  const decay = Math.exp(-damping * elapsed);
+  const wave = offset * cosine + sineWeight * sine;
+  level.pressure = target + decay * wave;
+  level.pressureVelocity = decay * (frequency * (sineWeight * cosine - offset * sine) - damping * wave);
+  gaugeTime += elapsed;
+  const flutter = (Math.sin(gaugeTime * 5.4) * 11 + Math.sin(gaugeTime * 8.7) * 2) * Math.min(1, target / 19);
   // Leave room past the last tick so the needle can rebound at full pressure.
   const sweep = -120 + 2.4 * THREE.MathUtils.clamp(level.pressure, -3, 103);
   level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter);
@@ -1048,6 +1222,7 @@ function clearSteamAndSelection() {
   selection = [level.source[0] + 1, Math.max(0, level.source[1] - 1)];
   highlight.visible = false;
   buttons[0].click();
+  nextWisp = 0.84;
   for (const { sprite } of particles) sprite.visible = false;
 }
 
