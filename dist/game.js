@@ -82,6 +82,110 @@ const levels = [
     ],
   },
   {
+    name: 'Watchmaker’s bench', view: [38, 48], source: [0, 2], destination: [5, 2],
+    boiler: buildKettle, build: buildClockwork, machineName: 'Clockwork escapement', action: 'ticking',
+    obstacles: [[2, 1], [3, 3]], fixed: [[3, 2, 'straight', 0]],
+    goal: 'Bridge the two gaps in the line to set the clockwork ticking.',
+  },
+  {
+    name: 'Silk hoist', view: [-39, 51], source: [0, 1], destination: [5, 3],
+    boiler: buildDuplexBoiler, build: buildHoist, machineName: 'Silk hoist', action: 'lifting',
+    obstacles: [[3, 1], [3, 2], [2, 4]], fixed: [[2, 2, 'straight', 1], [3, 3, 'straight', 0]],
+    goal: 'Turn the line around the brass blocks and bring the hoist to life.',
+  },
+  {
+    name: 'Salon turbine', view: [44, 53], source: [0, 4], destination: [5, 1],
+    boiler: buildKettle, build: buildTurbine, machineName: 'Salon turbine', action: 'turning',
+    obstacles: [[3, 4], [3, 3], [3, 1], [4, 3]], fixed: [[2, 3, 'straight', 1]],
+    goal: 'Find a route through the dogleg to the turbine.',
+  },
+  {
+    name: 'Evening service', view: [-37, 55], source: [0, 3], boiler: buildDuplexBoiler, junctions: ['tee'],
+    obstacles: [[3, 4], [4, 4], [2, 2]], fixed: [[2, 4, 'straight', 1], [3, 5, 'straight', 0]],
+    receivers: [
+      { position: [5, 3], build: buildClockwork },
+      { position: [5, 5], build: buildHoist },
+    ],
+  },
+  {
+    name: 'North gallery', view: [41, 57], source: [0, 3], boiler: buildKettle, junctions: ['tee'],
+    obstacles: [[3, 4], [4, 3], [2, 0], [5, 1], [3, 0]],
+    fixed: [[3, 2, 'elbow', 0], [3, 1, 'straight', 0]],
+    receivers: [
+      { position: [5, 2], build: buildBeamPump },
+      { position: [5, 0], build: buildTurbine },
+    ],
+  },
+  {
+    name: 'Three commissions', view: [-43, 60], source: [0, 3], boiler: buildDuplexBoiler, junctions: ['tee', 'cross'],
+    obstacles: [[3, 2], [4, 2], [3, 5], [1, 4], [2, 0], [5, 4]],
+    fixed: [[4, 1, 'straight', 0], [2, 2, 'straight', 1], [4, 5, 'elbow', 3]],
+    receivers: [
+      { position: [5, 1], build: buildClockwork },
+      { position: [5, 3], build: buildHoist },
+      { position: [5, 5], build: buildTurbine },
+    ],
+  },
+  {
+    name: 'Brass footbridge', view: [34, 54], source: [0, 3], destination: [5, 2],
+    boiler: buildKettle, build: buildHoist, machineName: 'Footbridge hoist', action: 'lifting', bendRisers: true,
+    terrain: [[2, 2, 1], [3, 2, 1, 'wall']],
+    obstacles: [[3, 0], [3, 1], [3, 3], [3, 4], [3, 5], [1, 2]],
+    fixed: [[3, 2, 'straight', 0]],
+    goal: 'Climb around the corner, cross the footbridge, and descend to the hoist.',
+  },
+  {
+    name: 'Upper observatory', view: [-38, 57], source: [0, 4], destination: [5, 2],
+    boiler: buildDuplexBoiler, build: buildClockwork, machineName: 'Observatory clockwork', action: 'ticking', bendRisers: true,
+    terrain: [[3, 4, 1, 'wall'], [3, 3, 2, 'wall'], [3, 2, 2, 'wall'], [4, 2, 2], [5, 2, 2]],
+    obstacles: [[2, 3], [4, 3], [4, 4], [3, 1], [4, 1]],
+    fixed: [[4, 2, 'straight', 0]],
+    goal: 'Climb two decks and turn along the upper ledge to reach the clockwork.',
+  },
+  {
+    name: 'Cascade', view: [41, 59], source: [0, 4], machineName: 'Cascade turbine', action: 'turning', bendRisers: true,
+    terrain: [[3, 4, 1, 'wall'], [3, 3, 2, 'wall'], [3, 2, 2, 'wall'], [4, 2, 1], [5, 2, 1]],
+    obstacles: [[2, 3], [4, 4], [4, 3], [2, 2], [4, 1]],
+    fixed: [[3, 3, 'straight', 1]],
+    receivers: [{ position: [5, 4], port: 3, build: buildTurbine }],
+    goal: 'Climb over the crest and step down twice to meet the turbine’s north inlet.',
+  },
+  {
+    name: 'High and low', view: [-40, 60], source: [0, 3], boiler: buildDuplexBoiler, junctions: ['tee'],
+    terrain: [...wallColumn(3, 1), [4, 3, 1], [5, 3, 2]],
+    obstacles: [[2, 2], [2, 4], [4, 2], [4, 5]], fixed: [[3, 4, 'elbow', 3]],
+    receivers: [
+      { position: [5, 3], build: buildClockwork },
+      { position: [5, 4], build: buildTurbine },
+    ],
+    goal: 'Split on the wall. Send one branch upstairs and the other down to the floor.',
+  },
+  {
+    name: 'The three decks', view: [41, 61], source: [0, 3], boiler: buildKettle, junctions: ['tee', 'cross'],
+    terrain: [...wallColumn(3, 1).slice(0, 5), [3, 5, 2], [4, 5, 2], [5, 5, 2], [4, 1, 1], [5, 1, 2]],
+    obstacles: [[2, 2], [2, 4], [4, 2], [4, 4], [5, 4]],
+    fixed: [[3, 1, 'elbow', 0], [4, 5, 'straight', 0]],
+    receivers: [
+      { position: [5, 1], build: buildClockwork },
+      { position: [5, 3], build: buildTurbine },
+      { position: [5, 5], build: buildHoist },
+    ],
+    goal: 'Build a crossroads on the wall and feed three machines at different heights.',
+  },
+  {
+    name: 'The grand commission', view: [-44, 62], source: [0, 4], boiler: buildDuplexBoiler, junctions: ['tee', 'cross'],
+    terrain: [...wallColumn(3, 1), [4, 2, 1], [4, 4, 1], [5, 2, 2], [5, 4, 2]],
+    obstacles: [[1, 2], [2, 2], [2, 3], [4, 1], [4, 3], [2, 5], [5, 1], [5, 3]],
+    fixed: [[3, 3, 'straight', 1], [3, 0, 'elbow', 0]],
+    receivers: [
+      { position: [5, 0], build: buildBeamPump },
+      { position: [5, 2], build: buildHoist },
+      { position: [5, 4], build: buildTurbine },
+      { position: [5, 5], build: buildClockwork },
+    ],
+    goal: 'Link both junctions on the wall. Supply all four machines with every branch sealed.',
+  },
+  {
     name: 'First fitting', tutorial: true, view: [42, 50], source: [0, 4], destination: [5, 1],
     machineName: 'Flywheel', action: 'spinning', build: buildFlywheel, obstacles: [[3, 2], [3, 4]],
     fixed: [[2, 3, 'straight', 1], [2, 2, 'straight', 1],
@@ -612,6 +716,12 @@ function buildTerrain(group, terrain) {
     }
     castBlock(support, deckFinish, 0.91, 0.074, 0.91, 0, -0.036, 0, 0.018);
     bolts(support, 0.37, 0.018);
+    const panel = castBlock(support, wall ? enamelBlue : bronze, 0.27, 0.138, 0.033,
+      0, -0.174, width / 2, 0.013);
+    panel.castShadow = false;
+    for (let i = 0; i < height; i++) {
+      box(support, brass, 0.024, 0.066, 0.008, (i - (height - 1) / 2) * 0.051, -0.174, width / 2 + 0.019);
+    }
   }
 }
 
@@ -632,7 +742,8 @@ function buildLevel(definition) {
   }
 
   const boiler = atTile(...definition.source, group, heights.get(key(...definition.source)) ?? 0);
-  const gaugeNeedle = buildBoiler(boiler, definition.view[0]);
+  const makeBoiler = definition.boiler ?? buildBoiler;
+  const gaugeNeedle = makeBoiler(boiler, definition.view[0]);
 
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
@@ -649,12 +760,21 @@ function buildLevel(definition) {
   };
 }
 
-function buildBoiler(boiler, heading) {
+function buildBoilerBase(boiler) {
   castBlock(boiler, frame, 0.94, 0.10, 0.89, 0, 0.051, 0, 0.025);
   castBlock(boiler, bronze, 0.89, 0.033, 0.84, 0, 0.109, 0, 0.010);
   castBlock(boiler, machineEnamel, 0.845, 0.04, 0.79, 0, 0.131, 0, 0.010);
   bolts(boiler, 0.34, 0.145);
 
+}
+
+function buildBoilerOutlet(boiler) {
+  cylinder(boiler, bronze, 0.132, 0.19, 0.39, pipeHeight, 0, 'x');
+  cylinder(boiler, brass, 0.157, 0.072, 0.452, pipeHeight, 0, 'x');
+}
+
+function buildBoiler(boiler, heading) {
+  buildBoilerBase(boiler);
   const centerY = 0.43;
   cylinder(boiler, boilerCopper, 0.284, 0.61, -0.033, centerY, 0, 'x');
   for (const x of [-0.318, 0.252]) {
@@ -675,8 +795,7 @@ function buildBoiler(boiler, heading) {
     }
   }
 
-  cylinder(boiler, bronze, 0.132, 0.19, 0.39, pipeHeight, 0, 'x');
-  cylinder(boiler, brass, 0.157, 0.072, 0.452, pipeHeight, 0, 'x');
+  buildBoilerOutlet(boiler);
   cylinder(boiler, bronze, 0.074, 0.18, -0.22, 0.75, -0.126);
   cylinder(boiler, brass, 0.091, 0.04, -0.22, 0.84, -0.126);
   cylinder(boiler, gasket, 0.054, 0.006, -0.22, 0.861, -0.126);
@@ -707,6 +826,58 @@ function buildBoiler(boiler, heading) {
     }
   }
   return mountBoilerGauge(boiler, heading);
+}
+
+function buildKettle(boiler, heading) {
+  buildBoilerBase(boiler);
+  // A broad blue kettle with a gilded crown is the counterpart to the horizontal copper boiler.
+  const body = new THREE.LatheGeometry([
+    [0, 0.18], [0.21, 0.18], [0.258, 0.25], [0.29, 0.34], [0.314, 0.46],
+    [0.309, 0.60], [0.28, 0.69], [0.23, 0.73], [0, 0.73],
+  ].map(([radius, height]) => new THREE.Vector2(radius, height)), 36);
+  mesh(body, enamelBlue, boiler, -0.035, 0, 0);
+  for (const [r, y] of [[0.247, 0.247], [0.302, 0.418], [0.304, 0.584], [0.258, 0.697]]) {
+    mesh(new THREE.TorusGeometry(r, 0.014, 8, 36), brass, boiler, -0.035, y, 0).rotation.x = Math.PI / 2;
+  }
+  const crown = mesh(new THREE.SphereGeometry(0.245, 24, 12), brass, boiler, -0.035, 0.718, 0);
+  crown.scale.y = 0.31;
+  cylinder(boiler, bronze, 0.046, 0.118, -0.035, 0.823, -0.046);
+  mesh(rivetGeometry, brass, boiler, -0.035, 0.887, -0.046).scale.setScalar(1.7);
+  mesh(crestGeometry, inlay, boiler, -0.025, 0.508, 0.309).scale.setScalar(0.80);
+  for (const z of [-0.205, 0.205]) {
+    castBlock(boiler, brass, 0.11, 0.15, 0.14, 0.05, 0.199, z, 0.025);
+  }
+  buildBoilerOutlet(boiler);
+  return mountBoilerGauge(boiler, heading);
+}
+
+function buildDuplexBoiler(boiler, heading) {
+  buildBoilerBase(boiler);
+  for (const z of [-0.188, 0.188]) {
+    castBlock(boiler, bronze, 0.63, 0.15, 0.22, -0.034, 0.218, z, 0.03);
+    cylinder(boiler, boilerCopper, 0.153, 0.67, -0.04, 0.382, z, 'x');
+    for (const x of [-0.36, 0.274]) {
+      const cap = mesh(new THREE.SphereGeometry(0.155, 22, 12), boilerCopper, boiler, x, 0.382, z);
+      cap.scale.x = 0.27;
+      cylinder(boiler, brass, 0.165, 0.057, x, 0.382, z, 'x');
+      for (let i = 0; i < 8; i++) {
+        const angle = i * Math.PI / 4;
+        mesh(rivetGeometry, bronze, boiler, x, 0.382 + Math.cos(angle) * 0.16, z + Math.sin(angle) * 0.16)
+          .scale.setScalar(0.61);
+      }
+    }
+    cylinder(boiler, bronze, 0.043, 0.12, 0.20, 0.565, z);
+    cylinder(boiler, brass, 0.069, 0.036, 0.20, 0.634, z);
+  }
+  cylinder(boiler, bronze, 0.066, 0.44, 0.292, 0.302, 0, 'z');
+  cylinder(boiler, brass, 0.089, 0.115, 0.308, 0.285, 0, 'x');
+  castBlock(boiler, enamelBlue, 0.245, 0.082, 0.158, -0.159, 0.565, 0.138, 0.024);
+  mesh(crestGeometry, inlay, boiler, -0.10, 0.385, 0.343).scale.setScalar(0.77);
+  buildBoilerOutlet(boiler);
+  const instrument = new THREE.Group();
+  instrument.position.y = -0.092;
+  boiler.add(instrument);
+  return mountBoilerGauge(instrument, heading);
 }
 
 function makeGaugeFace() {
@@ -797,6 +968,9 @@ function buildReceiver(group, position, port, build, height) {
   cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.05, 0.38, -0.29, 0.39, -0.32);
   cylinder(receiver, iron, 0.065, 0.045, -0.29, 0.58, -0.32);
+  cylinder(receiver, bronze, 0.080, 0.056, -0.29, 0.282, 0.32);
+  mesh(new THREE.TorusGeometry(0.061, 0.009, 7, 18), brass, receiver, -0.29, 0.332, 0.32)
+    .rotation.x = Math.PI / 2;
   const lampMaterial = material(0x5c351c, 0.1);
   const lamp = mesh(new THREE.SphereGeometry(0.056, 16, 10), lampMaterial, receiver, -0.29, 0.36, 0.32);
   const lampLight = new THREE.PointLight(0xffa33e, 0, 1.35);
@@ -1022,6 +1196,123 @@ function buildGovernor(machine) {
     pulley.rotation.y = phase * 1.12;
     sleeve.position.y = -0.41 + Math.sin(spread) * 0.18;
     for (const move of arms) move(spread);
+  };
+}
+
+function makeGear(parent, radius, teeth, finish, x, y, z) {
+  const gear = new THREE.Group();
+  gear.position.set(x, y, z);
+  parent.add(gear);
+  const rim = new THREE.Shape();
+  for (let tooth = 0; tooth < teeth; tooth++) {
+    for (const [phase, height] of [[0, -0.006], [0.19, 0.018], [0.64, 0.018], [0.82, -0.006]]) {
+      const angle = (tooth + phase) * Math.PI * 2 / teeth;
+      const px = Math.cos(angle) * (radius + height);
+      const py = Math.sin(angle) * (radius + height);
+      if (tooth === 0 && phase === 0) rim.moveTo(px, py);
+      else rim.lineTo(px, py);
+    }
+  }
+  rim.closePath();
+  for (let i = 0; i < 5; i++) {
+    const cutout = new THREE.Path();
+    const angle = i * Math.PI * 2 / 5;
+    cutout.absarc(Math.cos(angle) * radius * 0.62, Math.sin(angle) * radius * 0.62,
+      radius * 0.19, 0, Math.PI * 2, true);
+    rim.holes.push(cutout);
+  }
+  mesh(new THREE.ExtrudeGeometry(rim, { depth: 0.04, bevelEnabled: false, curveSegments: 6 }), finish, gear, 0, 0, -0.020);
+  cylinder(gear, bronze, radius * 0.22, 0.095, 0, 0, 0, 'z');
+  cylinder(gear, brass, radius * 0.137, 0.03, 0, 0, 0.061, 'z');
+  return gear;
+}
+
+function buildClockwork(machine) {
+  castBlock(machine, frame, 0.83, 0.115, 0.69, 0, 0.21, 0, 0.036);
+  castBlock(machine, enamelBlue, 0.78, 0.98, 0.135, 0, 0.736, -0.169, 0.046);
+  for (const x of [-0.314, 0.314]) {
+    cylinder(machine, brass, 0.038, 0.92, x, 0.673, -0.084);
+    mesh(rivetGeometry, brass, machine, x, 1.144, -0.084).scale.setScalar(1.7);
+  }
+  const large = makeGear(machine, 0.225, 24, brass, -0.15, 0.84, -0.035);
+  const small = makeGear(machine, 0.15, 16, bronze, 0.218, 0.753, -0.035);
+  const pendulum = new THREE.Group();
+  pendulum.position.set(-0.021, 0.777, 0.179);
+  machine.add(pendulum);
+  box(pendulum, brass, 0.029, 0.409, 0.022, 0, -0.18, 0);
+  cylinder(pendulum, bronze, 0.105, 0.047, 0, -0.398, 0, 'z');
+  cylinder(pendulum, brass, 0.069, 0.015, 0, -0.40, 0.027, 'z');
+  return phase => {
+    large.rotation.z = phase * 0.39;
+    small.rotation.z = Math.PI / 16 - phase * 0.585;
+    pendulum.rotation.z = Math.sin(phase * 0.84) * 0.34;
+  };
+}
+
+function buildHoist(machine) {
+  castBlock(machine, machineEnamel, 0.85, 0.115, 0.72, 0, 0.218, 0.013, 0.036);
+  for (const x of [-0.317, 0.317]) {
+    castBlock(machine, bronze, 0.115, 1.06, 0.169, x, 0.754, -0.121, 0.027);
+    castBlock(machine, brass, 0.172, 0.10, 0.235, x, 1.287, -0.121, 0.025);
+  }
+  castBlock(machine, machineryRed, 0.79, 0.155, 0.27, 0, 1.359, -0.085, 0.041);
+  const drum = new THREE.Group();
+  drum.position.set(0, 1.12, 0.046);
+  machine.add(drum);
+  cylinder(drum, bronze, 0.103, 0.517, 0, 0, 0, 'x');
+  for (let i = -4; i <= 4; i++) {
+    mesh(new THREE.TorusGeometry(0.106, 0.008, 7, 22), dark, drum, i * 0.037, 0, 0).rotation.y = Math.PI / 2;
+  }
+  const cap = makeGear(drum, 0.16, 16, brass, 0.255, 0, 0);
+  cap.rotation.y = Math.PI / 2;
+  const load = new THREE.Group();
+  machine.add(load);
+  castBlock(load, frame, 0.21, 0.171, 0.22, 0, 0, 0, 0.028);
+  box(load, brass, 0.19, 0.027, 0.203, 0, 0.067, 0);
+  mesh(new THREE.TorusGeometry(0.050, 0.012, 7, 16), brass, load, 0, 0.123, 0);
+  const cable = cylinder(machine, dark, 0.011, 1, 0, 0.83, 0.138);
+  const cableTop = new THREE.Vector3(0, 1.12, 0.146);
+  const cableBottom = new THREE.Vector3(0, 0.5, 0.146);
+  return phase => {
+    const lift = Math.sin(phase * 0.58);
+    drum.rotation.x = -lift * 2.55;
+    load.position.set(0, 0.599 + lift * 0.251, 0.146);
+    cableBottom.y = load.position.y + 0.15;
+    positionRod(cable, cableTop, cableBottom);
+  };
+}
+
+function buildTurbine(machine) {
+  castBlock(machine, enamelBlue, 0.82, 0.16, 0.63, 0, 0.238, 0.018, 0.042);
+  for (const x of [-0.18, 0.18]) {
+    castBlock(machine, bronze, 0.17, 0.392, 0.302, x, 0.411, -0.057, 0.043);
+  }
+  const shroud = new THREE.Group();
+  shroud.position.set(0, 0.766, 0.065);
+  machine.add(shroud);
+  cylinder(shroud, machineryRed, 0.348, 0.27, 0, 0, -0.085, 'z');
+  cylinder(shroud, dark, 0.308, 0.022, 0, 0, 0.062, 'z');
+  mesh(new THREE.TorusGeometry(0.322, 0.027, 9, 40), brass, shroud, 0, 0, 0.106);
+  mesh(new THREE.TorusGeometry(0.332, 0.013, 8, 38), bronze, shroud, 0, 0, -0.164);
+  const rotor = new THREE.Group();
+  rotor.position.z = 0.097;
+  shroud.add(rotor);
+  for (let i = 0; i < 9; i++) {
+    const spoke = new THREE.Group();
+    spoke.rotation.z = i * Math.PI * 2 / 9;
+    rotor.add(spoke);
+    const blade = castBlock(spoke, i % 2 ? bronze : brass, 0.091, 0.195, 0.044, 0.023, 0.178, 0, 0.013);
+    blade.rotation.set(0, 0.32, -0.34);
+  }
+  cylinder(rotor, brass, 0.101, 0.082, 0, 0, 0.016, 'z');
+  cylinder(rotor, bronze, 0.056, 0.038, 0, 0, 0.071, 'z');
+  const regulator = makeGear(machine, 0.114, 12, brass, 0.254, 0.367, 0.244);
+  const top = cylinder(machine, bronze, 0.054, 0.165, 0.192, 1.092, -0.031);
+  mesh(new THREE.TorusGeometry(0.073, 0.010, 7, 20), brass, machine, 0.192, 1.185, -0.031).rotation.x = Math.PI / 2;
+  top.castShadow = false;
+  return phase => {
+    rotor.rotation.z = -phase * 1.25;
+    regulator.rotation.z = phase * 0.57;
   };
 }
 
@@ -2202,6 +2493,8 @@ function selectLevel(index) {
   const goal = document.querySelector('#goal');
   if (level.tutorial) {
     goal.textContent = 'Pull out the pipe rack, pick up the elbow, and fit it into the gold-marked gap.';
+  } else if (level.goal) {
+    goal.textContent = level.goal;
   } else if (raised) {
     goal.textContent = advanced
       ? 'Feed both machines across three heights. Seal every branch.'
