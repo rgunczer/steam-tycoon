@@ -108,6 +108,8 @@ const pressureReadout = document.querySelector('#pressure-value');
 const pressureHand = document.querySelector('#pressure-hand');
 
 const scene = new THREE.Scene();
+const tray = new THREE.Group();
+scene.add(tray);
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 40);
 const viewDistance = 17;
 let viewTurns = 0;
@@ -115,7 +117,7 @@ let overhead = false;
 
 function aimCamera() {
   const [heading, tilt] = level.view;
-  const azimuth = THREE.MathUtils.degToRad(viewTurns * 90 + (overhead ? 0 : heading));
+  const azimuth = THREE.MathUtils.degToRad(overhead ? 0 : heading);
   const elevation = THREE.MathUtils.degToRad(overhead ? 89.99 : tilt);
   camera.position.set(
     Math.sin(azimuth) * Math.cos(elevation) * viewDistance,
@@ -155,8 +157,8 @@ reflection.mapping = THREE.EquirectangularReflectionMapping;
 scene.environment = reflection;
 scene.environmentIntensity = 0.72;
 
-scene.add(new THREE.HemisphereLight(0xb9d4dc, 0x685143, 1.35));
-const sun = new THREE.DirectionalLight(0xffc58e, 3.45);
+scene.add(new THREE.HemisphereLight(0xc5cbea, 0x665043, 1.42));
+const sun = new THREE.DirectionalLight(0xffc894, 3.38);
 sun.position.set(-4, 7, 2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1536, 1536);
@@ -164,7 +166,7 @@ Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near:
 sun.shadow.normalBias = 0.022;
 sun.shadow.bias = -0.0002;
 scene.add(sun);
-const rim = new THREE.DirectionalLight(0x68c8ca, 1.55);
+const rim = new THREE.DirectionalLight(0x9ca9f8, 1.25);
 rim.position.set(3, 4, -6);
 scene.add(rim);
 
@@ -178,10 +180,12 @@ const bronze = material(0x946134, 0.69, 0.46);
 const gaugeRed = new THREE.MeshStandardMaterial({
   color: 0xc62916, emissive: 0x7b180a, emissiveIntensity: 0.38, roughness: 0.55,
 });
-const frame = material(0x584236, 0.54, 0.64);
+const frame = material(0x553423, 0.14, 0.57);
+const velvet = material(0x141e47, 0.06, 0.96);
+const enamelBlue = material(0x203866, 0.53, 0.36);
 const dark = material(0x171c1b, 0.2);
 const brass = material(0xc99654, 0.72, 0.33);
-const teal = material(0x376e65, 0.42);
+const machineEnamel = material(0x273c60, 0.48, 0.40);
 const wallFinish = material(0x534b43, 0.42, 0.7);
 const platformFinish = material(0x475d59, 0.42, 0.62);
 const deckFinish = material(0x776655, 0.38, 0.72);
@@ -190,7 +194,6 @@ const fixedPipeFinish = material(0x468e9f, 0.48, 0.4);
 const collarActive = brass.clone();
 collarActive.emissive.setHex(0x9c470c);
 collarActive.emissiveIntensity = 0.58;
-const deckRail = material(0x49362b, 0.64, 0.59);
 const machineryRed = material(0x98412d, 0.48, 0.48);
 const rivetGeometry = new THREE.SphereGeometry(0.022, 8, 6);
 const boltGeometry = new THREE.CylinderGeometry(0.047, 0.047, 0.035, 6);
@@ -234,7 +237,7 @@ function cylinder(parent, finish, radius, length, x, y, z, axis = 'y') {
   return object;
 }
 
-function atTile(x, z, parent = scene, height = 0) {
+function atTile(x, z, parent, height = 0) {
   const group = new THREE.Group();
   group.position.set(world(x), height * heightStep, world(z));
   group.userData.position = [x, z];
@@ -251,32 +254,32 @@ function bolts(parent, spread, height) {
 const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.25 }), scene, 0, -0.91, 0);
 floor.rotation.x = -Math.PI / 2;
 floor.castShadow = false;
-castBlock(scene, dark, 6.64, 0.49, 6.64, 0, -0.36, 0, 0.075);
-box(scene, frame, 6.69, 0.085, 6.69, 0, -0.53, 0);
-box(scene, brass, 1.48, 0.19, 0.05, 0, -0.323, 3.32);
-box(scene, dark, 1.35, 0.105, 0.06, 0, -0.323, 3.348);
-castBlock(scene, frame, 6.73, 0.15, 6.73, 0, -0.11, 0, 0.045);
+castBlock(tray, frame, 6.73, 0.49, 6.73, 0, -0.36, 0, 0.075);
+castBlock(tray, velvet, 6.65, 0.16, 6.65, 0, -0.125, 0, 0.042);
 for (let side = 0; side < 4; side++) {
   const rail = new THREE.Group();
   rail.rotation.y = side * Math.PI / 2;
-  scene.add(rail);
-  castBlock(rail, deckRail, 5.87, 0.056, 0.18, 0, -0.034, 3.17, 0.016);
-  box(rail, brass, 5.72, 0.012, 0.015, 0, -0.004, 3.23);
-  for (const x of [-2.7, -1.8, -0.9, 0, 0.9, 1.8, 2.7]) {
-    mesh(rivetGeometry, bronze, rail, x, -0.009, 3.16);
+  tray.add(rail);
+  castBlock(rail, frame, 6.7, 0.22, 0.26, 0, -0.13, 3.21, 0.048);
+  box(rail, brass, 5.97, 0.017, 0.031, 0, -0.014, 3.19);
+  box(rail, bronze, 5.85, 0.011, 0.018, 0, -0.281, 3.352);
+  for (const x of [-1.65, 1.65]) {
+    castBlock(rail, bronze, 0.36, 0.14, 0.06, x, -0.31, 3.353, 0.025);
+    mesh(rivetGeometry, brass, rail, x - 0.1, -0.31, 3.387);
+    mesh(rivetGeometry, brass, rail, x + 0.1, -0.31, 3.387);
   }
-  for (const x of [-2.35, 2.35]) {
-    castBlock(rail, teal, 0.48, 0.21, 0.062, x, -0.31, 3.327, 0.025);
-    mesh(rivetGeometry, brass, rail, x - 0.16, -0.31, 3.366);
-    mesh(rivetGeometry, brass, rail, x + 0.16, -0.31, 3.366);
-  }
+  const crest = new THREE.Group();
+  crest.position.set(0, -0.336, 3.366);
+  rail.add(crest);
+  mesh(new THREE.CircleGeometry(0.105, 24), brass, crest);
+  mesh(new THREE.CircleGeometry(0.079, 24), enamelBlue, crest, 0, 0, 0.002);
 }
 for (const x of [-3.19, 3.19]) {
   for (const z of [-3.19, 3.19]) {
-    box(scene, teal, 0.49, 0.4, 0.49, x * 0.88, -0.70, z * 0.88);
-    box(scene, frame, 0.57, 0.08, 0.57, x * 0.88, -0.86, z * 0.88);
-    castBlock(scene, teal, 0.31, 0.16, 0.31, x, -0.035, z, 0.027);
-    mesh(boltGeometry, brass, scene, x, 0.06, z);
+    box(tray, frame, 0.48, 0.37, 0.48, x * 0.88, -0.69, z * 0.88);
+    box(tray, bronze, 0.54, 0.07, 0.54, x * 0.88, -0.86, z * 0.88);
+    castBlock(tray, bronze, 0.34, 0.15, 0.34, x, -0.039, z, 0.046).rotation.y = Math.PI / 4;
+    mesh(boltGeometry, brass, tray, x, 0.053, z);
   }
 }
 
@@ -366,14 +369,101 @@ function surfaceTexture(kind) {
 const castTexture = surfaceTexture('cast');
 const brushedTexture = surfaceTexture('brushed');
 const enamelTexture = surfaceTexture('enamel');
-const tileFinishes = [0x655c52, 0x5a5753, 0x635b54, 0x57544e].map(color => material(color, 0.23, 0.81));
-for (const finish of [...tileFinishes, frame, deckRail, deckFinish, wallFinish, platformFinish, castSteel]) {
+const tileFinishes = [0xd8b991, 0xc8ab87, 0xd4b38d, 0xcfb492].map(color => material(color, 0.07, 0.77));
+
+function makeWoodTexture() {
+  const random = randomTextureSample();
+  const rings = noiseField(7, 53, random);
+  const shade = noiseField(4, 7, random);
+  const pixels = new Uint8Array(textureSize * textureSize * 4);
+  for (let y = 0; y < textureSize; y++) {
+    for (let x = 0; x < textureSize; x++) {
+      const u = x / textureSize;
+      const v = y / textureSize;
+      const grain = rings(u, (v + 0.026 * Math.sin(u * Math.PI * 2) + 1) % 1);
+      const light = 145 + 62 * grain + 31 * shade(u, v);
+      pixels.set([light, light * 0.85, light * 0.73, 255], (y * textureSize + x) * 4);
+    }
+  }
+  const wood = new THREE.DataTexture(pixels, textureSize, textureSize);
+  wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
+  wood.colorSpace = THREE.SRGBColorSpace;
+  wood.minFilter = THREE.LinearMipmapLinearFilter;
+  wood.magFilter = THREE.LinearFilter;
+  wood.generateMipmaps = true;
+  wood.needsUpdate = true;
+  return wood;
+}
+
+function makeTileTexture() {
+  const tile = document.createElement('canvas');
+  tile.width = tile.height = 256;
+  const ctx = tile.getContext('2d');
+  const wash = ctx.createRadialGradient(106, 111, 40, 128, 128, 144);
+  wash.addColorStop(0, '#fcf2dc');
+  wash.addColorStop(1, '#bfaa88');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, 256, 256);
+  const random = randomTextureSample();
+  for (let i = 0; i < 3500; i++) {
+    ctx.fillStyle = `rgba(102, 71, 47, ${random() * 0.12})`;
+    ctx.fillRect(random() * 256, random() * 256, 2, 2);
+  }
+  ctx.strokeStyle = '#9475539c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(13, 13, 230, 230);
+  ctx.strokeStyle = '#94755355';
+  ctx.strokeRect(19, 19, 218, 218);
+  for (let i = 0; i < 4; i++) {
+    ctx.save();
+    ctx.translate(128, 128);
+    ctx.rotate(i * Math.PI / 2);
+    ctx.translate(-128, -128);
+    ctx.strokeStyle = '#99744e9c';
+    ctx.beginPath();
+    ctx.moveTo(14, 57);
+    ctx.bezierCurveTo(29, 45, 27, 26, 56, 15);
+    ctx.moveTo(18, 46);
+    ctx.bezierCurveTo(34, 39, 39, 35, 40, 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.translate(128, 127);
+  ctx.fillStyle = '#8b684666';
+  ctx.beginPath();
+  ctx.moveTo(0, 20);
+  ctx.bezierCurveTo(-13, 7, -21, -7, -12, -25);
+  ctx.quadraticCurveTo(0, -40, 12, -25);
+  ctx.bezierCurveTo(21, -7, 13, 7, 0, 20);
+  ctx.moveTo(-4, 12);
+  ctx.bezierCurveTo(-12, -1, -37, -17, -35, 3);
+  ctx.quadraticCurveTo(-33, 16, -22, 11);
+  ctx.quadraticCurveTo(-28, 2, -4, 12);
+  ctx.moveTo(4, 12);
+  ctx.bezierCurveTo(12, -1, 37, -17, 35, 3);
+  ctx.quadraticCurveTo(33, 16, 22, 11);
+  ctx.quadraticCurveTo(28, 2, 4, 12);
+  ctx.fill();
+  ctx.fillRect(-12, 14, 24, 4);
+  const texture = new THREE.CanvasTexture(tile);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return texture;
+}
+
+const tileTexture = makeTileTexture();
+for (const finish of tileFinishes) {
+  Object.assign(finish, castTexture, { map: tileTexture, bumpScale: 0.013 });
+}
+for (const finish of [deckFinish, wallFinish, platformFinish, castSteel]) {
   Object.assign(finish, castTexture, { bumpScale: 0.022 });
 }
+Object.assign(frame, brushedTexture, { map: makeWoodTexture(), bumpScale: 0.012 });
+Object.assign(velvet, enamelTexture, { bumpScale: 0.024 });
 for (const finish of [iron, bronze, brass, collarActive, riserFinish]) {
   Object.assign(finish, brushedTexture, { bumpScale: 0.009 });
 }
-for (const finish of [teal, machineryRed, fixedPipeFinish]) {
+for (const finish of [machineEnamel, enamelBlue, machineryRed, fixedPipeFinish]) {
   Object.assign(finish, enamelTexture, { bumpScale: 0.012 });
 }
 const tileShape = new THREE.Shape().moveTo(-0.46, -0.46).lineTo(0.46, -0.46)
@@ -389,8 +479,7 @@ for (let i = 0; i < tilePositions.count; i++) {
 }
 for (let z = 0; z < size; z++) {
   for (let x = 0; x < size; x++) {
-    const tile = mesh(tileGeometry, tileFinishes[(x * 7 + z * 11 + x * z) % 4], scene, world(x), -0.101, world(z));
-    tile.rotation.y = ((x * 3 + z) % 4) * Math.PI / 2;
+    const tile = mesh(tileGeometry, tileFinishes[(x * 7 + z * 11 + x * z) % 4], tray, world(x), -0.101, world(z));
     tile.userData.position = [x, z];
     tiles.push(tile);
   }
@@ -415,7 +504,7 @@ function buildTerrain(group, terrain) {
 function buildLevel(definition) {
   const group = new THREE.Group();
   group.visible = false;
-  scene.add(group);
+  tray.add(group);
   const terrain = definition.terrain ?? [];
   const heights = new Map(terrain.map(([x, z, height]) => [key(x, z), height]));
   buildTerrain(group, terrain);
@@ -538,7 +627,7 @@ function buildReceiver(group, position, port, build, height) {
   const receiver = atTile(...position, group, height);
   receiver.rotation.y = -(port - 2) * Math.PI / 2;
   castBlock(receiver, dark, 0.97, 0.075, 0.98, 0, 0.0375, 0, 0.019);
-  castBlock(receiver, teal, 0.91, 0.11, 0.91, 0, 0.106, 0, 0.027);
+  castBlock(receiver, machineEnamel, 0.91, 0.11, 0.91, 0, 0.106, 0, 0.027);
   bolts(receiver, 0.36, 0.169);
   cylinder(receiver, iron, 0.11, 0.36, -0.32, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
@@ -569,7 +658,7 @@ function buildReceiver(group, position, port, build, height) {
 
 function buildFlywheel(receiver) {
   cylinder(receiver, iron, 0.155, 0.33, -0.15, 0.38, 0.04, 'x');
-  castBlock(receiver, teal, 0.28, 0.49, 0.25, 0.23, 0.35, -0.05, 0.036);
+  castBlock(receiver, machineEnamel, 0.28, 0.49, 0.25, 0.23, 0.35, -0.05, 0.036);
   cylinder(receiver, iron, 0.075, 0.29, 0.23, 0.54, 0.06, 'z');
 
   const wheel = new THREE.Group();
@@ -600,7 +689,7 @@ function buildFlywheel(receiver) {
 }
 
 function buildFan(receiver) {
-  box(receiver, teal, 0.48, 0.42, 0.40, 0.08, 0.31, -0.04);
+  box(receiver, machineEnamel, 0.48, 0.42, 0.40, 0.08, 0.31, -0.04);
   cylinder(receiver, iron, 0.34, 0.12, 0.08, 0.64, 0.02, 'z');
   cylinder(receiver, dark, 0.29, 0.024, 0.08, 0.64, 0.085, 'z');
   const rotor = new THREE.Group();
@@ -611,7 +700,7 @@ function buildFan(receiver) {
     const blade = new THREE.Group();
     blade.rotation.z = i * Math.PI * 2 / 5;
     rotor.add(blade);
-    box(blade, teal, 0.115, 0.23, 0.035, 0.027, 0.16, 0).rotation.z = -0.26;
+    box(blade, machineEnamel, 0.115, 0.23, 0.035, 0.027, 0.16, 0).rotation.z = -0.26;
   }
   mesh(new THREE.TorusGeometry(0.32, 0.031, 10, 40), brass, receiver, 0.08, 0.64, 0.18);
   return phase => { rotor.rotation.z = phase * 1.5; };
@@ -645,7 +734,7 @@ function positionRod(rod, a, b) {
 }
 
 function buildCompressor(machine) {
-  castBlock(machine, teal, 0.78, 0.19, 0.56, 0, 0.26, 0, 0.04);
+  castBlock(machine, machineEnamel, 0.78, 0.19, 0.56, 0, 0.26, 0, 0.04);
   box(machine, castSteel, 0.75, 0.44, 0.14, 0, 1.01, -0.20);
   const crankshaft = cylinder(machine, iron, 0.072, 0.77, 0, 0.50, 0.16, 'x');
   const eccentrics = [-0.22, 0.22].map((x, index) => {
@@ -681,7 +770,7 @@ function buildCompressor(machine) {
 }
 
 function buildBeamPump(machine) {
-  castBlock(machine, teal, 0.78, 0.14, 0.62, 0, 0.23, 0, 0.03);
+  castBlock(machine, machineEnamel, 0.78, 0.14, 0.62, 0, 0.23, 0, 0.03);
   castBlock(machine, castSteel, 0.23, 0.99, 0.31, 0, 0.77, -0.16, 0.037);
   const beam = new THREE.Group();
   beam.position.set(0, 1.28, 0.07);
@@ -954,7 +1043,7 @@ const highlight = new THREE.LineLoop(
   new THREE.LineBasicMaterial({ color: 0x8cf1d9, toneMapped: false }),
 );
 highlight.visible = false;
-scene.add(highlight);
+tray.add(highlight);
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let selection;
@@ -964,7 +1053,7 @@ function select(x, z) {
   const index = key(x, z);
   const allowed = editable(x, z) && (level.pipes.has(index) || canPlace(index, tool));
   highlight.position.set(world(x), heightAt(index) * heightStep, world(z));
-  highlight.material.color.setHex(allowed ? 0x8cf1d9 : 0xefb171);
+  highlight.material.color.setHex(allowed ? 0xffe1a0 : 0xc77e67);
   highlight.visible = true;
 }
 
@@ -1013,8 +1102,82 @@ stage.addEventListener('keydown', event => {
   }
 });
 
+const toolProfiles = {
+  straight: { points: [[9, 20], [63, 20]], fittings: [[10, 20, 0], [62, 20, 0]] },
+  elbow: { points: [[13, 29], [30, 29], [38, 23], [46, 11], [61, 11]], fittings: [[13, 29, 0], [61, 11, 0]] },
+  tee: { points: [[11, 15], [61, 15], [36, 15], [36, 33]], fittings: [[11, 15, 0], [61, 15, 0], [36, 33, 1]] },
+  cross: { points: [[11, 20], [61, 20], [36, 20], [36, 6], [36, 34]], fittings: [[11, 20, 0], [61, 20, 0], [36, 6, 1], [36, 34, 1]] },
+  riser: { points: [[10, 30], [24, 30], [34, 25], [42, 12], [62, 12]], fittings: [[10, 30, 0], [61, 12, 0]] },
+  'riser-elbow': { points: [[14, 31], [29, 31], [35, 26], [39, 12], [44, 8], [54, 8]], fittings: [[14, 31, 0], [54, 8, 0]] },
+};
+
+function toolThumbnail(type) {
+  const icon = document.createElement('canvas');
+  icon.width = 144;
+  icon.height = 76;
+  icon.className = 'tool-thumbnail';
+  icon.setAttribute('aria-hidden', 'true');
+  const ctx = icon.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (type === 'remove') {
+    ctx.strokeStyle = '#ceac72';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(22, 30);
+    ctx.lineTo(44, 12);
+    ctx.lineTo(50, 5);
+    ctx.moveTo(31, 33);
+    ctx.lineTo(39, 13);
+    ctx.lineTo(35, 5);
+    ctx.stroke();
+    ctx.fillStyle = '#f3dcb1';
+    ctx.beginPath();
+    ctx.arc(40, 16, 2, 0, Math.PI * 2);
+    ctx.fill();
+    return icon;
+  }
+  const { points, fittings } = toolProfiles[type];
+  ctx.beginPath();
+  for (const [i, [x, y]] of points.entries()) {
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#120f0d';
+  ctx.lineWidth = 13;
+  ctx.stroke();
+  ctx.strokeStyle = type.startsWith('riser') ? '#946041' : '#696866';
+  ctx.lineWidth = 10;
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(0, -1.4);
+  ctx.strokeStyle = '#fff3d282';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+  for (const [x, y, upright] of fittings) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (upright) ctx.rotate(Math.PI / 2);
+    const gold = ctx.createLinearGradient(0, -6, 0, 6);
+    gold.addColorStop(0, '#b58446');
+    gold.addColorStop(0.28, '#ffdf98');
+    gold.addColorStop(0.65, '#b28447');
+    gold.addColorStop(1, '#5b3a25');
+    ctx.fillStyle = gold;
+    ctx.fillRect(-3.5, -6, 7, 12);
+    ctx.strokeStyle = '#ead19a';
+    ctx.lineWidth = 0.7;
+    ctx.strokeRect(-3.5, -6, 7, 12);
+    ctx.restore();
+  }
+  return icon;
+}
+
 const buttons = [...document.querySelectorAll('[data-tool]')];
 for (const button of buttons) {
+  button.prepend(toolThumbnail(button.dataset.tool));
   button.addEventListener('click', () => {
     if (button.hidden) return;
     tool = button.dataset.tool;
@@ -1039,7 +1202,7 @@ const particles = Array.from({ length: 72 }, () => {
     map: vaporTexture, color: 0xe2edec, transparent: true, depthWrite: false,
   }));
   sprite.visible = false;
-  scene.add(sprite);
+  tray.add(sprite);
   return { sprite, age: 0, dx: 0, dz: 0, wisp: false };
 });
 let nextParticle = 0;
@@ -1127,6 +1290,19 @@ const boardBounds = boxCorners({
   max: new THREE.Vector3(3.4, 0.04, 3.4),
 });
 const cameraPoint = new THREE.Vector3();
+let turnStart = 0;
+let turnTarget = 0;
+let turnProgress = 1;
+let renderWidth = 0;
+let renderHeight = 0;
+
+function turnTray(dt) {
+  if (turnProgress >= 1) return;
+  turnProgress = Math.min(1, turnProgress + dt * 3.8);
+  const eased = turnProgress * turnProgress * (3 - 2 * turnProgress);
+  tray.rotation.y = THREE.MathUtils.lerp(turnStart, turnTarget, eased);
+  resize();
+}
 
 function resize() {
   const { clientWidth: width, clientHeight: height } = stage;
@@ -1135,8 +1311,9 @@ function resize() {
   let right = -Infinity;
   let bottom = Infinity;
   let top = -Infinity;
+  tray.updateWorldMatrix(true, false);
   for (const corner of [...boardBounds, ...level.fixtureBounds]) {
-    cameraPoint.copy(corner).applyMatrix4(camera.matrixWorldInverse);
+    cameraPoint.copy(corner).applyMatrix4(tray.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
     const x = cameraPoint.x / -cameraPoint.z;
     const y = cameraPoint.y / -cameraPoint.z;
     left = Math.min(left, x);
@@ -1153,13 +1330,22 @@ function resize() {
   projection[8] = (left + right) / (2 * halfHeight * aspect);
   projection[9] = (bottom + top) / (2 * halfHeight);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-  renderer.setSize(width, height, false);
+  if (width !== renderWidth || height !== renderHeight) {
+    renderer.setSize(width, height, false);
+    renderWidth = width;
+    renderHeight = height;
+  }
 }
 
 const overheadButton = document.querySelector('#view-overhead');
 const homeButton = document.querySelector('#view-home');
 
 function updateView() {
+  const angle = -viewTurns * Math.PI / 2;
+  const delta = THREE.MathUtils.euclideanModulo(angle - tray.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+  turnStart = tray.rotation.y;
+  turnTarget = turnStart + delta;
+  turnProgress = Math.abs(delta) < 0.001 ? 1 : 0;
   aimCamera();
   resize();
   overheadButton.setAttribute('aria-pressed', String(overhead));
@@ -1190,7 +1376,7 @@ const heightGuide = document.querySelector('#height-guide');
 const guideGeometry = new THREE.BufferGeometry();
 const guideLines = new THREE.LineSegments(guideGeometry,
   new THREE.LineBasicMaterial({ color: 0x90e7d1, transparent: true, opacity: 0.72, toneMapped: false }));
-scene.add(guideLines);
+tray.add(guideLines);
 
 function updateHeightGuide() {
   guideLines.visible = heightGuide.value !== '';
@@ -1228,6 +1414,8 @@ function clearSteamAndSelection() {
 
 function selectLevel(index) {
   if (level) level.group.visible = false;
+  tray.rotation.y = 0;
+  tray.updateMatrixWorld();
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
   level.group.visible = true;
@@ -1279,6 +1467,7 @@ renderer.setAnimationLoop(now => {
   const elapsed = Math.max(0, (now - previous) / 1000);
   const dt = Math.min(elapsed, 0.05);
   previous = now;
+  turnTray(Math.min(elapsed, 0.26));
   animateMachine(dt);
   animateGauge(elapsed);
   animateSteam(dt);

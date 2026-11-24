@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101715">
+  <meta name="theme-color" content="#110f1d">
   <title>Steam Tycoon</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
     <header>
-      <div><p class="eyebrow">THE PIPE WORKSHOP</p><h1>Steam Tycoon</h1></div>
+      <div class="title-lockup">
+        <span class="crest" aria-hidden="true">⚜</span>
+        <h1>Steam Tycoon</h1>
+      </div>
       <div class="board-controls">
         <label class="level-picker" for="level">Board
           <select id="level">
@@ -40,37 +43,49 @@
         </label>
         <button id="reset" type="button">Reset board</button>
       </div>
+      <div id="pressure" class="pressure" role="meter" aria-label="Steam pressure" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <span class="pressure-label">Steam pressure<strong id="pressure-value">0%</strong></span>
+        <svg viewBox="0 0 104 92" aria-hidden="true">
+          <defs><radialGradient id="dial-face"><stop stop-color="#f6dfb6"/><stop offset="1" stop-color="#c39961"/></radialGradient></defs>
+          <circle cx="52" cy="46" r="41" fill="#322719" stroke="#ac8150" stroke-width="3"/>
+          <circle cx="52" cy="46" r="36" fill="url(#dial-face)" stroke="#e4bc7f"/>
+          <path d="M 26 61 A 30 30 0 1 1 78 61" fill="none" stroke="#6f5232" stroke-width="2"/>
+          <path d="M 76 28 A 30 30 0 0 1 78 61" fill="none" stroke="#477355" stroke-width="4"/>
+          <path d="M 26 61 l 7 -4 M 22 46 h 8 M 26 31 l 7 4 M 37 20 l 4 7 M 52 16 v 8 M 67 20 l -4 7 M 78 31 l -7 4 M 82 46 h -8 M 78 61 l -7 -4" fill="none" stroke="#513a22" stroke-width="1.5"/>
+          <path id="pressure-hand" d="M 49 51 L 52 21 L 55 51 Z" fill="#953b29"/>
+          <circle cx="52" cy="46" r="4" fill="#513a22"/>
+        </svg>
+      </div>
     </header>
     <section id="workshop" aria-label="Steam pipe puzzle">
+      <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate a tile, and Delete to remove a pipe."></div>
       <div class="workshop-instruments">
         <div class="readout">
           <span class="indicator"></span>
           <p id="status" role="status">Boiler on · Flywheel idle</p>
         </div>
-        <div id="pressure" class="pressure" role="meter" aria-label="Steam pressure" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-          <span class="pressure-label">Steam pressure<strong id="pressure-value">0%</strong></span>
-          <svg viewBox="0 0 104 92" aria-hidden="true">
-            <defs><radialGradient id="dial-face"><stop stop-color="#f6dfb6"/><stop offset="1" stop-color="#c39961"/></radialGradient></defs>
-            <circle cx="52" cy="46" r="41" fill="#322719" stroke="#ac8150" stroke-width="3"/>
-            <circle cx="52" cy="46" r="36" fill="url(#dial-face)" stroke="#e4bc7f"/>
-            <path d="M 26 61 A 30 30 0 1 1 78 61" fill="none" stroke="#6f5232" stroke-width="2"/>
-            <path d="M 76 28 A 30 30 0 0 1 78 61" fill="none" stroke="#477355" stroke-width="4"/>
-            <path d="M 26 61 l 7 -4 M 22 46 h 8 M 26 31 l 7 4 M 37 20 l 4 7 M 52 16 v 8 M 67 20 l -4 7 M 78 31 l -7 4 M 82 46 h -8 M 78 61 l -7 -4" fill="none" stroke="#513a22" stroke-width="1.5"/>
-            <path id="pressure-hand" d="M 49 51 L 52 21 L 55 51 Z" fill="#953b29"/>
-            <circle cx="52" cy="46" r="4" fill="#513a22"/>
-          </svg>
-        </div>
+        <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span><span id="fixed-legend" hidden>◆ Fixed pipes</span></div>
       </div>
-      <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate a tile, and Delete to remove a pipe."></div>
-      <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span><span id="fixed-legend" hidden>◆ Fixed pipes</span></div>
+    </section>
+    <section class="controls" aria-label="Pipe tools">
+      <div class="tools" role="group" aria-label="Select a tool">
+        <button type="button" data-tool="straight" aria-pressed="true">Straight</button>
+        <button type="button" data-tool="elbow" aria-pressed="false">Elbow</button>
+        <button type="button" data-tool="tee" aria-pressed="false" title="Split the flow into two branches" hidden>Tee</button>
+        <button type="button" data-tool="cross" aria-pressed="false" title="Join four directions in one tile" hidden>Cross</button>
+        <button type="button" data-tool="riser" aria-pressed="false" title="Place on the lower tile. Rotate to aim the high end." hidden>Riser</button>
+        <button type="button" data-tool="riser-elbow" aria-pressed="false" title="Climb one height while turning a corner." hidden>Riser elbow</button>
+        <button type="button" data-tool="remove" aria-pressed="false">Remove</button>
+      </div>
       <div class="view-controls" role="group" aria-label="Board camera">
-        <button id="view-left" type="button" aria-label="Rotate view left" title="Rotate view left">↶</button>
-        <button id="view-right" type="button" aria-label="Rotate view right" title="Rotate view right">↷</button>
+        <button id="view-left" type="button" aria-label="Rotate view left" title="Rotate view left"><span aria-hidden="true">↶</span> Left</button>
+        <button id="view-right" type="button" aria-label="Rotate view right" title="Rotate view right"><span aria-hidden="true">↷</span> Right</button>
         <button id="view-overhead" type="button" aria-pressed="false">Overhead</button>
         <button id="view-home" type="button" disabled>Reset view</button>
       </div>
     </section>
-    <section class="controls" aria-label="Pipe tools">
+    <div class="play-notes">
+      <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
       <label class="level-picker" id="height-control" for="height-guide" hidden>Highlight height
         <select id="height-guide">
           <option value="">Off</option>
@@ -79,17 +94,7 @@
           <option value="2">Level 2</option>
         </select>
       </label>
-      <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
-      <div class="tools" role="group" aria-label="Select a tool">
-        <button type="button" data-tool="straight" aria-pressed="true"><span aria-hidden="true">━</span> Straight</button>
-        <button type="button" data-tool="elbow" aria-pressed="false"><span aria-hidden="true">┗</span> Elbow</button>
-        <button type="button" data-tool="tee" aria-pressed="false" title="Split the flow into two branches" hidden><span aria-hidden="true">┳</span> Tee</button>
-        <button type="button" data-tool="cross" aria-pressed="false" title="Join four directions in one tile" hidden><span aria-hidden="true">╋</span> Cross</button>
-        <button type="button" data-tool="riser" aria-pressed="false" title="Place on the lower tile. Rotate to aim the high end." hidden>Riser</button>
-        <button type="button" data-tool="riser-elbow" aria-pressed="false" title="Climb one height while turning a corner." hidden>Riser elbow</button>
-        <button type="button" data-tool="remove" aria-pressed="false"><span aria-hidden="true">×</span> Remove</button>
-      </div>
-    </section>
+    </div>
   </main>
   <script type="module">
     import('./game.js').catch(error => {
