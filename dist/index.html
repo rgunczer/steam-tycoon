@@ -16,7 +16,8 @@
           <h1>Steam Tycoon</h1>
         </div>
         <div class="board-controls">
-          <label class="level-picker" for="level">Board
+          <div class="level-picker">
+            <label for="level">Board</label>
             <select id="level">
               <optgroup label="Ground boards">
                 <option value="0">1 · Flywheel</option>
@@ -41,7 +42,8 @@
                 <option value="11">12 · Terraced works</option>
               </optgroup>
             </select>
-          </label>
+            <output id="ledger-count" class="ledger-count">0 / 12 solved</output>
+          </div>
           <button id="reset" type="button">Reset board</button>
         </div>
         <div id="pressure" class="pressure" role="meter" aria-label="Steam pressure" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -80,6 +82,10 @@
           </button>
           <div class="selected-plate">In hand <strong id="selected-tool">—</strong></div>
           <button id="turn-piece" type="button" disabled>Turn piece</button>
+          <div class="history-controls" role="group" aria-label="Pipe edits">
+            <button id="undo" type="button" title="Undo the last pipe edit" disabled>Undo</button>
+            <button id="redo" type="button" title="Redo the last pipe edit" disabled>Redo</button>
+          </div>
           <details class="view-panel">
             <summary>View controls</summary>
             <div class="view-controls" role="group" aria-label="Board camera">

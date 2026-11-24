@@ -107,6 +107,8 @@ const drawerPanel = document.querySelector('#drawer-panel');
 const drawerLabel = document.querySelector('#drawer-label');
 const selectedTool = document.querySelector('#selected-tool');
 const turnPiece = document.querySelector('#turn-piece');
+const undoButton = document.querySelector('#undo');
+const redoButton = document.querySelector('#redo');
 const soundButton = document.querySelector('#sound');
 const rewardPlate = document.querySelector('#reward-plate');
 const rewardLabel = document.querySelector('#reward-label');
@@ -621,7 +623,7 @@ function buildLevel(definition) {
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
     ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0, pressureVelocity: 0,
-    completionTime: 0, rewardShown: false,
+    completionTime: 0, rewardShown: false, solved: false, past: [], future: [],
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
     ])),
@@ -1183,6 +1185,8 @@ function updateFlow() {
     : (powered ? `Board complete · ${supplied}/${level.machines.size} machines powered`
       : `${supplied}/${level.machines.size} machines powered · ${leakStatus}`);
   if (status.textContent !== message) status.textContent = message;
+  if (powered) level.solved = true;
+  recordProgress();
 }
 
 function removePipe(index) {
@@ -1191,10 +1195,61 @@ function removePipe(index) {
   level.pipes.delete(index);
 }
 
+function pieceState(pipe) {
+  return pipe ? { type: pipe.type, rotation: pipe.rotation } : null;
+}
+
+function applyPipeState(index, state) {
+  const pipe = level.pipes.get(index);
+  if (pipe && state && pipe.type === state.type) {
+    pipe.rotation = state.rotation;
+    pipe.group.rotation.y = -state.rotation * Math.PI / 2;
+  } else {
+    if (pipe) removePipe(index);
+    if (state) addPipe(index % size, Math.floor(index / size), state.type, state.rotation);
+  }
+}
+
+function updateHistoryButtons() {
+  undoButton.disabled = !level.past.length;
+  redoButton.disabled = !level.future.length;
+}
+
+function rememberEdit(changes) {
+  if (!changes.length) return;
+  level.past.push(changes);
+  if (level.past.length > 80) level.past.shift();
+  level.future.length = 0;
+  updateHistoryButtons();
+}
+
+function replayEdit(undo) {
+  const from = undo ? level.past : level.future;
+  const to = undo ? level.future : level.past;
+  if (!from.length) return false;
+  const changes = from.pop();
+  for (const { index, before, after } of changes) {
+    applyPipeState(index, undo ? before : after);
+  }
+  to.push(changes);
+  updateHistoryButtons();
+  playSound('tap');
+  updateFlow();
+  if (selection && highlight.visible) select(...selection);
+  return true;
+}
+
+undoButton.addEventListener('click', () => replayEdit(true));
+redoButton.addEventListener('click', () => replayEdit(false));
+
 function reset() {
-  for (const index of level.pipes.keys()) removePipe(index);
-  addPipe(level.source[0] + 1, level.source[1], 'straight', 0, true);
-  for (const [x, z, type, rotation] of level.fixed ?? []) addPipe(x, z, type, rotation, true);
+  const changes = [];
+  for (const [index, pipe] of level.pipes) {
+    if (pipe.fixed) continue;
+    changes.push({ index, before: pieceState(pipe), after: null });
+    removePipe(index);
+  }
+  rememberEdit(changes);
   for (const machine of level.machines.values()) {
     machine.phase = machine.speed = 0;
     machine.animate(0, 0);
@@ -1215,21 +1270,24 @@ function act(x, z, action = tool) {
   if (!editable(x, z)) return;
   const index = key(x, z);
   const pipe = level.pipes.get(index);
+  const before = pieceState(pipe);
+  let after;
   if (action === 'remove') {
     if (!pipe) return;
-    removePipe(index);
-    playSound('tap');
+    after = null;
   } else if (pipe) {
-    pipe.rotation = (pipe.rotation + 1) % rotationCount[pipe.type];
-    pipe.group.rotation.y = -pipe.rotation * Math.PI / 2;
-    snapPiece(x, z, pipe.type, pipe.rotation);
+    if (rotationCount[pipe.type] === 1) return;
+    after = { type: pipe.type, rotation: (pipe.rotation + 1) % rotationCount[pipe.type] };
   } else if (action === 'rotate') {
     rotatePreview();
     return;
   } else if (canPlace(index, action)) {
-    addPipe(x, z, action, previewRotation);
-    snapPiece(x, z, action, previewRotation);
+    after = { type: action, rotation: previewRotation };
   } else return;
+  applyPipeState(index, after);
+  rememberEdit([{ index, before, after }]);
+  if (after) snapPiece(x, z, after.type, after.rotation);
+  else playSound('tap');
   updateFlow();
 }
 
@@ -1429,6 +1487,12 @@ stage.addEventListener('blur', event => {
 });
 turnPiece.addEventListener('click', rotatePreview);
 stage.addEventListener('keydown', event => {
+  const pressed = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && ['z', 'y'].includes(pressed)) {
+    event.preventDefault();
+    replayEdit(pressed === 'z' && !event.shiftKey);
+    return;
+  }
   const moves = { ArrowRight: [1, 0], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowUp: [0, -1] };
   const move = moves[event.key];
   if (move) {
@@ -1528,6 +1592,7 @@ function toggleDrawer() {
   drawerLabel.textContent = drawerOpen ? 'Stow pipe rack' : drawerDiscovered ? 'Open pipe rack' : 'Release pipe rack';
   drawerPanel.inert = !drawerOpen;
   drawerPanel.classList.toggle('revealed', drawerOpen);
+  recordProgress();
   if (!drawerOpen && focusWasInRack) drawerLatch.focus();
 }
 
@@ -1617,6 +1682,7 @@ rewardLatch.addEventListener('click', toggleReward);
 function showMilestone() {
   level.rewardShown = true;
   rewardPlate.hidden = false;
+  recordProgress();
   rewardLabel.textContent = `${activeMilestone.label} revealed · Used from ${activeMilestone.board}`;
   setRewardDrawer(true);
   playSound('latch');
@@ -1931,7 +1997,77 @@ homeButton.addEventListener('click', () => {
   updateView();
 });
 
+const progressKey = 'steam-tycoon-progress-v1';
+
+function readProgress() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(progressKey));
+  } catch {
+    // The game also works in a browser that blocks local storage.
+  }
+  const knownBoards = Object.fromEntries(levels.flatMap(({ name }) => {
+    const entry = saved?.boards?.[name];
+    if (!entry || !Array.isArray(entry.pipes)) return [];
+    return [[name, {
+      pipes: entry.pipes,
+      solved: entry.solved === true,
+      rewardShown: entry.solved === true && entry.rewardShown === true,
+    }]];
+  }));
+  return { board: saved?.board, drawerDiscovered: saved?.drawerDiscovered === true, boards: knownBoards };
+}
+
+const progress = readProgress();
 const levelSelect = document.querySelector('#level');
+const ledgerCount = document.querySelector('#ledger-count');
+const boardOptions = [...levelSelect.options].map(option => ({ option, label: option.textContent.trim() }));
+
+function updateLedger() {
+  let solved = 0;
+  for (const { option, label } of boardOptions) {
+    const complete = progress.boards[levels[Number(option.value)].name]?.solved;
+    solved += complete ? 1 : 0;
+    const title = complete ? `✓ ${label}` : label;
+    if (option.textContent !== title) option.textContent = title;
+  }
+  const count = `${solved} / ${levels.length} solved`;
+  if (ledgerCount.textContent !== count) ledgerCount.textContent = count;
+}
+
+function recordProgress() {
+  progress.board = level.name;
+  progress.drawerDiscovered = drawerDiscovered;
+  const pipes = [...level.pipes].flatMap(([index, pipe]) =>
+    pipe.fixed ? [] : [[index, pipe.type, pipe.rotation]]);
+  progress.boards[level.name] = { pipes, solved: level.solved, rewardShown: level.rewardShown };
+  try {
+    localStorage.setItem(progressKey, JSON.stringify(progress));
+  } catch {
+    // Keep the current route and ledger in memory if saving fails.
+  }
+  updateLedger();
+}
+
+function restoreBoard() {
+  addPipe(level.source[0] + 1, level.source[1], 'straight', 0, true);
+  for (const [x, z, type, rotation] of level.fixed ?? []) addPipe(x, z, type, rotation, true);
+  const saved = progress.boards[level.name];
+  if (!saved) return;
+  level.solved = saved.solved;
+  level.rewardShown = saved.rewardShown && [...milestones.keys()].some(i => levels[i].name === level.name);
+  for (const entry of saved.pipes.slice(0, size * size)) {
+    if (!Array.isArray(entry)) continue;
+    const [index, type, rotation] = entry;
+    if (!Number.isInteger(index) || index < 0 || index >= size * size ||
+        typeof type !== 'string' || !canPlace(index, type) ||
+        rackSlots.get(type)?.button.hidden ||
+        !Number.isInteger(rotation) || rotation < 0 || rotation >= rotationCount[type] ||
+        !editable(index % size, Math.floor(index / size))) continue;
+    applyPipeState(index, { type, rotation });
+  }
+}
+
 const heightControl = document.querySelector('#height-control');
 const heightGuide = document.querySelector('#height-guide');
 const guideGeometry = new THREE.BufferGeometry();
@@ -1982,13 +2118,12 @@ function selectLevel(index) {
   if (level) level.group.visible = false;
   tray.rotation.y = 0;
   tray.updateMatrixWorld();
+  const firstVisit = !boards[index];
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
   level.group.visible = true;
-  prepareMilestone(index);
   viewTurns = 0;
   overhead = false;
-  updateView();
   const advanced = level.machines.size > 1;
   const raised = level.heights.size > 0;
   const machineName = level.machineName ?? level.name;
@@ -2020,9 +2155,12 @@ function selectLevel(index) {
   for (const slot of rackSlots.values()) {
     slot.model.visible = !slot.button.hidden;
   }
+  if (firstVisit) restoreBoard();
+  prepareMilestone(index);
+  updateView();
   clearSteamAndSelection();
-  if (level.pipes.size) updateFlow();
-  else reset();
+  updateHistoryButtons();
+  updateFlow();
 }
 
 levelSelect.addEventListener('change', () => selectLevel(Number(levelSelect.value)));
@@ -2030,6 +2168,10 @@ document.querySelector('#reset').addEventListener('click', () => {
   reset();
   clearSteamAndSelection();
 });
+drawerDiscovered = progress.drawerDiscovered;
+if (drawerDiscovered) drawerLabel.textContent = 'Open pipe rack';
+const savedIndex = levels.findIndex(({ name }) => name === progress.board);
+if (savedIndex !== -1) levelSelect.value = String(savedIndex);
 selectLevel(Number(levelSelect.value));
 new ResizeObserver(resize).observe(stage);
 let previous = performance.now();
