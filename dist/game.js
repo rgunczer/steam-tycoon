@@ -181,6 +181,9 @@ function material(color, metalness = 0.35, roughness = 0.48) {
 }
 
 const iron = material(0x51575a, 0.69, 0.39);
+const pipeSteel = material(0x767c84, 0.77, 0.30);
+const gasket = material(0x30241e, 0.32, 0.62);
+const boilerCopper = material(0x9e532e, 0.72, 0.43);
 const castSteel = material(0x635e58, 0.5, 0.67);
 const bronze = material(0x946134, 0.69, 0.46);
 const gaugeRed = new THREE.MeshStandardMaterial({
@@ -190,7 +193,7 @@ const frame = material(0x553423, 0.14, 0.57);
 const velvet = material(0x141e47, 0.06, 0.96);
 const enamelBlue = material(0x203866, 0.53, 0.36);
 const dark = material(0x171c1b, 0.2);
-const brass = material(0xc99654, 0.72, 0.33);
+const brass = material(0xd6a05b, 0.76, 0.28);
 const machineEnamel = material(0x273c60, 0.48, 0.40);
 const wallFinish = material(0x534b43, 0.42, 0.7);
 const platformFinish = material(0x475d59, 0.42, 0.62);
@@ -405,7 +408,7 @@ function surfaceTexture(kind) {
 const castTexture = surfaceTexture('cast');
 const brushedTexture = surfaceTexture('brushed');
 const enamelTexture = surfaceTexture('enamel');
-const tileFinishes = [0xd8b991, 0xc8ab87, 0xd4b38d, 0xcfb492].map(color => material(color, 0.07, 0.77));
+const tileFinishes = [0xe1cfb4, 0xd3bea2, 0xd9c6aa, 0xdecaad].map(color => material(color, 0.06, 0.70));
 
 function makeWoodTexture() {
   const random = randomTextureSample();
@@ -435,20 +438,31 @@ function makeTileTexture() {
   const tile = document.createElement('canvas');
   tile.width = tile.height = 256;
   const ctx = tile.getContext('2d');
-  const wash = ctx.createRadialGradient(106, 111, 40, 128, 128, 144);
-  wash.addColorStop(0, '#fcf2dc');
-  wash.addColorStop(1, '#bfaa88');
+  const wash = ctx.createLinearGradient(11, 5, 242, 257);
+  wash.addColorStop(0, '#f7ebd1');
+  wash.addColorStop(0.55, '#ebdcc4');
+  wash.addColorStop(1, '#d5bda0');
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, 256, 256);
   const random = randomTextureSample();
+  for (let i = 0; i < 40; i++) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 12 + random() * 29;
+    const stain = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    stain.addColorStop(0, `rgba(94, 66, 44, ${random() * 0.12})`);
+    stain.addColorStop(1, 'transparent');
+    ctx.fillStyle = stain;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
   for (let i = 0; i < 3500; i++) {
     ctx.fillStyle = `rgba(102, 71, 47, ${random() * 0.12})`;
     ctx.fillRect(random() * 256, random() * 256, 2, 2);
   }
-  ctx.strokeStyle = '#9475539c';
+  ctx.strokeStyle = '#8b694eac';
   ctx.lineWidth = 2;
   ctx.strokeRect(13, 13, 230, 230);
-  ctx.strokeStyle = '#94755355';
+  ctx.strokeStyle = '#9e765072';
   ctx.strokeRect(19, 19, 218, 218);
   for (let i = 0; i < 4; i++) {
     ctx.save();
@@ -461,11 +475,17 @@ function makeTileTexture() {
     ctx.bezierCurveTo(29, 45, 27, 26, 56, 15);
     ctx.moveTo(18, 46);
     ctx.bezierCurveTo(34, 39, 39, 35, 40, 18);
+    ctx.moveTo(21, 36);
+    ctx.bezierCurveTo(40, 30, 32, 21, 25, 24);
     ctx.stroke();
+    ctx.fillStyle = '#99744e78';
+    ctx.beginPath();
+    ctx.ellipse(29, 40, 2, 5, Math.PI / 4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
   ctx.translate(128, 127);
-  ctx.fillStyle = '#8b684666';
+  ctx.fillStyle = '#916b4696';
   ctx.beginPath();
   ctx.moveTo(0, 20);
   ctx.bezierCurveTo(-13, 7, -21, -7, -12, -25);
@@ -480,7 +500,14 @@ function makeTileTexture() {
   ctx.quadraticCurveTo(33, 16, 22, 11);
   ctx.quadraticCurveTo(28, 2, 4, 12);
   ctx.fill();
-  ctx.fillRect(-12, 14, 24, 4);
+  ctx.fillRect(-13, 14, 26, 4);
+  ctx.beginPath();
+  ctx.moveTo(0, 15);
+  ctx.quadraticCurveTo(12, 25, 7, 29);
+  ctx.quadraticCurveTo(1, 28, 0, 34);
+  ctx.quadraticCurveTo(-1, 28, -7, 29);
+  ctx.quadraticCurveTo(-12, 25, 0, 15);
+  ctx.fill();
   const texture = new THREE.CanvasTexture(tile);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -496,7 +523,8 @@ for (const finish of [deckFinish, wallFinish, platformFinish, castSteel]) {
 }
 Object.assign(frame, brushedTexture, { map: makeWoodTexture(), bumpScale: 0.012 });
 Object.assign(velvet, enamelTexture, { bumpScale: 0.024 });
-for (const finish of [iron, bronze, brass, collarActive, riserFinish]) {
+Object.assign(boilerCopper, castTexture, { bumpScale: 0.020 });
+for (const finish of [iron, pipeSteel, bronze, brass, collarActive, riserFinish]) {
   Object.assign(finish, brushedTexture, { bumpScale: 0.009 });
 }
 for (const finish of [machineEnamel, enamelBlue, machineryRed, fixedPipeFinish]) {
@@ -520,6 +548,35 @@ for (let z = 0; z < size; z++) {
     tiles.push(tile);
   }
 }
+function markBoardEdge(labels, x, z, angle) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 768;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'italic 42px Georgia';
+  ctx.fillStyle = '#edc68b';
+  ctx.shadowColor = '#100b16';
+  ctx.shadowOffsetY = 2;
+  for (const [i, text] of [...labels].entries()) {
+    ctx.fillText(text, (i + 0.5) * 128, 32);
+  }
+  const goldPrint = new THREE.CanvasTexture(canvas);
+  goldPrint.colorSpace = THREE.SRGBColorSpace;
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.29),
+    new THREE.MeshBasicMaterial({ map: goldPrint, transparent: true, depthWrite: false, toneMapped: false }));
+  strip.position.set(x, 0.024, z);
+  strip.rotation.x = -Math.PI / 2;
+  strip.rotateZ(angle);
+  tray.add(strip);
+}
+
+markBoardEdge('123456', 0, -3.23, 0);
+markBoardEdge('654321', 0, 3.23, Math.PI);
+markBoardEdge('ABCDEF', -3.23, 0, -Math.PI / 2);
+markBoardEdge('FEDCBA', 3.23, 0, Math.PI / 2);
+
 function buildTerrain(group, terrain) {
   for (const [x, z, height, kind] of terrain) {
     const support = atTile(x, z, group, height);
@@ -548,34 +605,13 @@ function buildLevel(definition) {
     const block = atTile(x, z, group);
     castBlock(block, dark, 0.85, 0.10, 0.85, 0, 0.05, 0, 0.025);
     castBlock(block, castSteel, 0.77, 0.38, 0.77, 0, 0.25, 0, 0.043);
-    castBlock(block, iron, 0.81, 0.075, 0.81, 0, 0.395, 0, 0.019);
-    bolts(block, 0.294, 0.446);
+    castBlock(block, bronze, 0.805, 0.025, 0.805, 0, 0.361, 0, 0.009);
+    castBlock(block, iron, 0.81, 0.075, 0.81, 0, 0.407, 0, 0.019);
+    bolts(block, 0.294, 0.459);
   }
 
   const boiler = atTile(...definition.source, group, heights.get(key(...definition.source)) ?? 0);
-  castBlock(boiler, frame, 0.87, 0.10, 0.87, 0, 0.05, 0, 0.025);
-  bolts(boiler, 0.32, 0.105);
-  cylinder(boiler, bronze, 0.332, 0.62, 0, 0.43, 0);
-  for (const y of [0.17, 0.69]) {
-    cylinder(boiler, bronze, 0.359, 0.073, 0, y, 0);
-    for (let i = 0; i < 12; i++) {
-      const angle = i * Math.PI / 6;
-      mesh(rivetGeometry, brass, boiler, 0.358 * Math.cos(angle), y, 0.358 * Math.sin(angle));
-    }
-  }
-  const dome = mesh(new THREE.SphereGeometry(0.31, 24, 12), brass, boiler, 0, 0.72, 0);
-  dome.scale.y = 0.59;
-  mesh(new THREE.TorusGeometry(0.315, 0.019, 8, 32), brass, boiler, 0, 0.729, 0).rotation.x = Math.PI / 2;
-  cylinder(boiler, iron, 0.06, 0.12, 0, 0.875, 0);
-  cylinder(boiler, brass, 0.102, 0.037, 0, 0.938, 0);
-  cylinder(boiler, iron, 0.115, 0.31, 0.345, pipeHeight, 0, 'x');
-  cylinder(boiler, brass, 0.147, 0.086, 0.44, pipeHeight, 0, 'x');
-  cylinder(boiler, brass, 0.345, 0.035, 0, 0.28, 0);
-  cylinder(boiler, brass, 0.345, 0.035, 0, 0.59, 0);
-  const gaugeNeedle = mountBoilerGauge(boiler, definition.view[0]);
-  mesh(new THREE.TorusGeometry(0.097, 0.012, 8, 22), bronze, boiler, 0, 0.962, 0).rotation.x = Math.PI / 2;
-  box(boiler, brass, 0.144, 0.016, 0.019, 0, 0.962, 0);
-  box(boiler, brass, 0.019, 0.016, 0.144, 0, 0.962, 0);
+  const gaugeNeedle = buildBoiler(boiler, definition.view[0]);
 
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
@@ -589,6 +625,66 @@ function buildLevel(definition) {
     pipes: new Map(),
     fixtureBounds: group.children.flatMap(fixture => boxCorners(new THREE.Box3().setFromObject(fixture))),
   };
+}
+
+function buildBoiler(boiler, heading) {
+  castBlock(boiler, frame, 0.94, 0.10, 0.89, 0, 0.051, 0, 0.025);
+  castBlock(boiler, bronze, 0.89, 0.033, 0.84, 0, 0.109, 0, 0.010);
+  castBlock(boiler, machineEnamel, 0.845, 0.04, 0.79, 0, 0.131, 0, 0.010);
+  bolts(boiler, 0.34, 0.145);
+
+  const centerY = 0.43;
+  cylinder(boiler, boilerCopper, 0.284, 0.61, -0.033, centerY, 0, 'x');
+  for (const x of [-0.318, 0.252]) {
+    for (const z of [-0.158, 0.158]) {
+      castBlock(boiler, brass, 0.138, 0.19, 0.14, x + 0.036, 0.212, z, 0.028);
+    }
+    const dome = mesh(new THREE.SphereGeometry(0.279, 28, 16), boilerCopper, boiler, x, centerY, 0);
+    dome.scale.x = 0.30;
+    cylinder(boiler, bronze, 0.298, 0.072, x, centerY, 0, 'x');
+    for (const offset of [-0.029, 0.029]) {
+      mesh(new THREE.TorusGeometry(0.292, 0.012, 8, 32), brass, boiler, x + offset, centerY, 0)
+        .rotation.y = Math.PI / 2;
+    }
+    for (let i = 0; i < 14; i++) {
+      const angle = (i + 0.5) * Math.PI / 7;
+      mesh(rivetGeometry, brass, boiler, x, centerY + 0.296 * Math.cos(angle), 0.296 * Math.sin(angle))
+        .scale.setScalar(0.76);
+    }
+  }
+
+  cylinder(boiler, bronze, 0.132, 0.19, 0.39, pipeHeight, 0, 'x');
+  cylinder(boiler, brass, 0.157, 0.072, 0.452, pipeHeight, 0, 'x');
+  cylinder(boiler, bronze, 0.074, 0.18, -0.22, 0.75, -0.126);
+  cylinder(boiler, brass, 0.091, 0.04, -0.22, 0.84, -0.126);
+  cylinder(boiler, gasket, 0.054, 0.006, -0.22, 0.861, -0.126);
+  cylinder(boiler, brass, 0.044, 0.198, 0.18, 0.778, 0.012);
+  cylinder(boiler, bronze, 0.079, 0.055, 0.18, 0.713, 0.012);
+  const valve = new THREE.Group();
+  valve.position.set(0.18, 0.89, 0.012);
+  valve.rotation.x = -0.31;
+  boiler.add(valve);
+  mesh(new THREE.TorusGeometry(0.102, 0.014, 10, 28), brass, valve);
+  for (let i = 0; i < 4; i++) {
+    box(valve, bronze, 0.011, 0.181, 0.015, 0, 0, 0).rotation.z = i * Math.PI / 4;
+  }
+  cylinder(valve, brass, 0.032, 0.027, 0, 0, 0, 'z');
+
+  const badge = new THREE.Group();
+  badge.position.set(-0.024, 0.445, 0.283);
+  boiler.add(badge);
+  mesh(new THREE.CircleGeometry(0.119, 32), bronze, badge);
+  mesh(new THREE.CircleGeometry(0.103, 32), enamelBlue, badge, 0, 0, 0.004);
+  mesh(crestGeometry, brass, badge, 0, 0.005, 0.008).scale.setScalar(0.84);
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 5; i++) {
+      const angle = -1.05 + i * 0.27;
+      const leaf = mesh(rivetGeometry, brass, badge, side * Math.cos(angle) * 0.154, Math.sin(angle) * 0.134, -0.009);
+      leaf.scale.set(0.43, 1.0, 0.48);
+      leaf.rotation.z = side * (0.64 - i * 0.23);
+    }
+  }
+  return mountBoilerGauge(boiler, heading);
 }
 
 function makeGaugeFace() {
@@ -632,14 +728,16 @@ const gaugeFace = makeGaugeFace();
 
 function mountBoilerGauge(boiler, heading) {
   const gauge = new THREE.Group();
-  gauge.position.set(0, 0.825, 0.438);
-  gauge.rotation.set(-0.72, THREE.MathUtils.degToRad(heading * 0.48), 0, 'YXZ');
+  gauge.position.set(-0.193, 0.984, 0.211);
+  gauge.rotation.set(-0.57, THREE.MathUtils.degToRad(heading * 0.47), 0, 'YXZ');
+  gauge.scale.setScalar(0.92);
   boiler.add(gauge);
 
   // The pressure tap starts inside the boiler and the union meets the back of the dial.
-  cylinder(boiler, bronze, 0.052, 0.14, 0, 0.642, 0.309, 'z');
-  const stem = cylinder(boiler, brass, 0.033, 0.208, 0, 0.726, 0.374);
-  stem.rotation.x = 0.39;
+  cylinder(boiler, bronze, 0.061, 0.086, -0.193, 0.689, 0.145);
+  const stem = cylinder(boiler, brass, 0.027, 0.265, -0.193, 0.813, 0.157);
+  stem.rotation.x = 0.12;
+  cylinder(boiler, brass, 0.042, 0.033, -0.193, 0.752, 0.149);
   cylinder(gauge, iron, 0.107, 0.098, 0, 0, -0.039, 'z');
   cylinder(gauge, bronze, 0.226, 0.074, 0, 0, 0, 'z');
   mesh(new THREE.CircleGeometry(0.205, 40), gaugeFace, gauge, 0, 0, 0.039);
@@ -663,8 +761,16 @@ function buildReceiver(group, position, port, build, height) {
   const receiver = atTile(...position, group, height);
   receiver.rotation.y = -(port - 2) * Math.PI / 2;
   castBlock(receiver, dark, 0.97, 0.075, 0.98, 0, 0.0375, 0, 0.019);
-  castBlock(receiver, machineEnamel, 0.91, 0.11, 0.91, 0, 0.106, 0, 0.027);
-  bolts(receiver, 0.36, 0.169);
+  castBlock(receiver, bronze, 0.951, 0.035, 0.95, 0, 0.076, 0, 0.011);
+  castBlock(receiver, machineEnamel, 0.91, 0.12, 0.91, 0, 0.124, 0, 0.027);
+  bolts(receiver, 0.36, 0.19);
+  for (const z of [-0.447, 0.447]) {
+    castBlock(receiver, inlay, 0.723, 0.030, 0.022, 0, 0.122, z, 0.006);
+  }
+  const insignia = mesh(crestGeometry, brass, receiver, 0, 0.153, 0.466);
+  insignia.scale.setScalar(0.63);
+  const plate = castBlock(receiver, enamelBlue, 0.22, 0.093, 0.029, 0, 0.132, 0.446, 0.010);
+  plate.castShadow = false;
   cylinder(receiver, iron, 0.11, 0.36, -0.32, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.146, 0.085, -0.44, pipeHeight, 0, 'x');
   cylinder(receiver, brass, 0.05, 0.38, -0.29, 0.39, -0.32);
@@ -693,23 +799,38 @@ function buildReceiver(group, position, port, build, height) {
 }
 
 function buildFlywheel(receiver) {
-  cylinder(receiver, iron, 0.155, 0.33, -0.15, 0.38, 0.04, 'x');
-  castBlock(receiver, machineEnamel, 0.28, 0.49, 0.25, 0.23, 0.35, -0.05, 0.036);
-  cylinder(receiver, iron, 0.075, 0.29, 0.23, 0.54, 0.06, 'z');
+  cylinder(receiver, pipeSteel, 0.142, 0.33, -0.18, 0.39, 0.08, 'x');
+  for (const x of [-0.34, -0.018]) {
+    cylinder(receiver, brass, 0.157, 0.049, x, 0.39, 0.08, 'x');
+    mesh(new THREE.TorusGeometry(0.101, 0.01, 8, 24), bronze, receiver, x - 0.024, 0.39, 0.08)
+      .rotation.y = Math.PI / 2;
+  }
+  castBlock(receiver, bronze, 0.29, 0.32, 0.28, 0.213, 0.30, -0.048, 0.045);
+  const stand = new THREE.Group();
+  stand.position.set(0.213, 0.30, -0.042);
+  receiver.add(stand);
+  for (const x of [-0.083, 0.083]) {
+    const leg = castBlock(stand, brass, 0.086, 0.427, 0.099, x, 0.085, 0.027, 0.019);
+    leg.rotation.z = x < 0 ? -0.32 : 0.32;
+  }
+  cylinder(receiver, iron, 0.072, 0.31, 0.213, 0.556, 0.06, 'z');
 
   const wheel = new THREE.Group();
-  wheel.position.set(0.23, 0.54, 0.19);
+  wheel.position.set(0.213, 0.556, 0.188);
   receiver.add(wheel);
-  mesh(new THREE.TorusGeometry(0.305, 0.055, 10, 40), bronze, wheel);
-  mesh(new THREE.TorusGeometry(0.314, 0.023, 8, 40), brass, wheel, 0, 0, 0.043);
-  mesh(new THREE.TorusGeometry(0.314, 0.023, 8, 40), brass, wheel, 0, 0, -0.043);
+  mesh(new THREE.TorusGeometry(0.323, 0.047, 12, 44), bronze, wheel);
+  mesh(new THREE.TorusGeometry(0.333, 0.019, 8, 44), brass, wheel, 0, 0, 0.043);
+  mesh(new THREE.TorusGeometry(0.333, 0.019, 8, 44), brass, wheel, 0, 0, -0.043);
   cylinder(wheel, brass, 0.08, 0.105, 0, 0, 0, 'z');
   for (let spoke = 0; spoke < 6; spoke++) {
     const angle = spoke * Math.PI / 3;
-    const bar = box(wheel, iron, 0.051, 0.25, 0.049, -Math.sin(angle) * 0.14, Math.cos(angle) * 0.14, 0);
+    const bar = castBlock(wheel, brass, 0.043, 0.28, 0.050, -Math.sin(angle) * 0.169, Math.cos(angle) * 0.169, 0, 0.012);
     bar.rotation.z = angle;
   }
-  const crank = mesh(new THREE.BoxGeometry(1, 0.045, 0.037), brass, receiver);
+  cylinder(wheel, bronze, 0.064, 0.043, 0, 0, 0.054, 'z');
+  cylinder(wheel, brass, 0.042, 0.022, 0, 0, 0.086, 'z');
+  cylinder(wheel, brass, 0.035, 0.067, 0.147, 0, 0.042, 'z');
+  const crank = castBlock(receiver, brass, 1, 0.045, 0.037, 0, 0, 0, 0.012);
   const piston = cylinder(receiver, iron, 0.041, 0.23, -0.19, 0.38, 0.2, 'x');
   return phase => {
     wheel.rotation.z = -phase;
@@ -728,6 +849,7 @@ function buildFan(receiver) {
   box(receiver, machineEnamel, 0.48, 0.42, 0.40, 0.08, 0.31, -0.04);
   cylinder(receiver, iron, 0.34, 0.12, 0.08, 0.64, 0.02, 'z');
   cylinder(receiver, dark, 0.29, 0.024, 0.08, 0.64, 0.085, 'z');
+  mesh(new THREE.TorusGeometry(0.323, 0.022, 8, 40), bronze, receiver, 0.08, 0.64, -0.053);
   const rotor = new THREE.Group();
   rotor.position.set(0.08, 0.64, 0.15);
   receiver.add(rotor);
@@ -743,13 +865,14 @@ function buildFan(receiver) {
 }
 
 function buildPress(receiver) {
-  const enamel = Object.assign(material(0x93492f, 0.40), enamelTexture, { bumpScale: 0.012 });
+  const enamel = Object.assign(material(0x692b3c, 0.40), enamelTexture, { bumpScale: 0.012 });
   box(receiver, iron, 0.55, 0.12, 0.46, 0.08, 0.20, 0.07);
   for (const x of [-0.19, 0.35]) {
     box(receiver, enamel, 0.09, 0.69, 0.20, x, 0.49, 0.03);
     cylinder(receiver, brass, 0.036, 0.48, x, 0.47, 0.20);
   }
-  box(receiver, enamel, 0.68, 0.16, 0.42, 0.08, 0.85, 0.05);
+  castBlock(receiver, enamel, 0.68, 0.16, 0.42, 0.08, 0.85, 0.05, 0.028);
+  castBlock(receiver, bronze, 0.61, 0.030, 0.385, 0.08, 0.789, 0.05, 0.010);
   cylinder(receiver, iron, 0.15, 0.23, 0.08, 0.87, 0.07);
   cylinder(receiver, brass, 0.17, 0.045, 0.08, 0.99, 0.07);
   const ram = new THREE.Group();
@@ -881,12 +1004,12 @@ function buildGovernor(machine) {
 }
 
 function pipeGeometry(type) {
-  const radius = 0.116;
+  const radius = 0.126;
   const start = new THREE.Vector3(0.5, 0, 0);
   const path = type === 'straight'
     ? new THREE.LineCurve3(start, new THREE.Vector3(-0.5, 0, 0))
     : new THREE.CubicBezierCurve3(start, new THREE.Vector3(0.224, 0, 0), new THREE.Vector3(0, 0, 0.224), new THREE.Vector3(0, 0, 0.5));
-  return new THREE.TubeGeometry(path, type === 'elbow' ? 24 : 1, radius, 20, false);
+  return new THREE.TubeGeometry(path, type === 'elbow' ? 24 : 1, radius, 24, false);
 }
 
 function riserGeometry(type) {
@@ -897,7 +1020,7 @@ function riserGeometry(type) {
   const lowTurn = low.clone().multiplyScalar(0.30);
   const highTurn = high.clone().multiplyScalar(0.30);
   high.y = highTurn.y = heightStep;
-  return new THREE.TubeGeometry(new THREE.CubicBezierCurve3(low, lowTurn, highTurn, high), 28, 0.116, 20, false);
+  return new THREE.TubeGeometry(new THREE.CubicBezierCurve3(low, lowTurn, highTurn, high), 28, 0.126, 24, false);
 }
 
 const bodies = {
@@ -906,14 +1029,14 @@ const bodies = {
 };
 const junctionHub = new THREE.SphereGeometry(0.155, 20, 12);
 const junctionArm = new THREE.TubeGeometry(
-  new THREE.LineCurve3(new THREE.Vector3(), new THREE.Vector3(0.5, 0, 0)), 1, 0.116, 20, false,
+  new THREE.LineCurve3(new THREE.Vector3(), new THREE.Vector3(0.5, 0, 0)), 1, 0.126, 24, false,
 );
 const collarGeometry = new THREE.LatheGeometry([
-  new THREE.Vector2(0.084, -0.042), new THREE.Vector2(0.134, -0.042),
-  new THREE.Vector2(0.149, -0.029), new THREE.Vector2(0.149, 0.029),
-  new THREE.Vector2(0.134, 0.042), new THREE.Vector2(0.084, 0.042),
-  new THREE.Vector2(0.084, -0.042),
-], 24);
+  [0.094, -0.043], [0.138, -0.043], [0.156, -0.034],
+  [0.156, -0.022], [0.146, -0.018], [0.146, 0.018],
+  [0.156, 0.022], [0.156, 0.034], [0.138, 0.043], [0.094, 0.043], [0.094, -0.043],
+].map(([radius, height]) => new THREE.Vector2(radius, height)), 32);
+const gasketGeometry = new THREE.CylinderGeometry(0.144, 0.144, 0.017, 28, 1, true);
 const boards = [];
 let tool = 'straight';
 let powered = false;
@@ -927,7 +1050,7 @@ function heightAt(index) {
 function addPipe(x, z, type, rotation, fixed = false) {
   const group = atTile(x, z, level.group, heightAt(key(x, z)));
   group.position.y += pipeHeight;
-  const body = fixed ? fixedPipeFinish : riseByPort[type] ? riserFinish : iron;
+  const body = fixed ? fixedPipeFinish : riseByPort[type] ? riserFinish : pipeSteel;
   const collars = buildPipeModel(group, type, { body, collar: brass, rivet: bronze }, fixed);
   group.rotation.y = -rotation * Math.PI / 2;
   level.pipes.set(key(x, z), { type, rotation, fixed, group, collars });
@@ -956,6 +1079,7 @@ function buildPipeModel(group, type, finish, fixed = false) {
     else flange.rotation.x = Math.PI / 2;
     group.add(flange);
     const collar = mesh(collarGeometry, finish.collar, flange);
+    mesh(gasketGeometry, gasket, flange, 0, -0.041, 0);
     for (let i = 0; i < 4; i++) {
       const angle = (i + 0.5) * Math.PI / 2;
       mesh(rivetGeometry, finish.rivet, flange, Math.cos(angle) * 0.128, 0.025, Math.sin(angle) * 0.128);
