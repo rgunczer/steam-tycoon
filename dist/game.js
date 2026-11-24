@@ -102,6 +102,12 @@ const heightStep = 0.68;
 const maxHeight = 2;
 const stage = document.querySelector('#stage');
 const workshop = document.querySelector('#workshop');
+const drawerLatch = document.querySelector('#drawer-latch');
+const drawerPanel = document.querySelector('#drawer-panel');
+const drawerLabel = document.querySelector('#drawer-label');
+const selectedTool = document.querySelector('#selected-tool');
+let drawerOpen = false;
+let drawerDiscovered = false;
 const status = document.querySelector('#status');
 const pressureMeter = document.querySelector('#pressure');
 const pressureReadout = document.querySelector('#pressure-value');
@@ -251,7 +257,7 @@ function bolts(parent, spread, height) {
   }
 }
 
-const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.25 }), scene, 0, -0.91, 0);
+const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.29 }), scene, 0, -1.71, 0);
 floor.rotation.x = -Math.PI / 2;
 floor.castShadow = false;
 const boxWidth = 7.24;
@@ -1056,6 +1062,10 @@ function editable(x, z) {
 }
 
 function act(x, z, action = tool) {
+  if (!drawerDiscovered) {
+    drawerLatch.focus();
+    return;
+  }
   if (!editable(x, z)) return;
   const index = key(x, z);
   const pipe = level.pipes.get(index);
@@ -1097,26 +1107,43 @@ function pick(event) {
   pointer.set(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height);
   raycaster.setFromCamera(pointer, camera);
   const fixtureHit = raycaster.intersectObjects(level.group.children)[0];
-  if (fixtureHit) {
-    let object = fixtureHit.object;
-    while (object.parent !== level.group) object = object.parent;
-    return object.userData.position;
+  const tileHit = raycaster.intersectObjects(tiles)[0];
+  const boardHit = fixtureHit && (!tileHit || fixtureHit.distance < tileHit.distance) ? fixtureHit : tileHit;
+  const boxHit = raycaster.intersectObjects(caseParts.children)[0];
+  if (boxHit && (!boardHit || boxHit.distance < boardHit.distance)) {
+    let object = boxHit.object;
+    while (object !== caseParts) {
+      if (object.userData.latch) return { latch: true };
+      if (object.userData.tool && drawerOpen && drawerMotion > 0.82
+          && !rackSlots.get(object.userData.tool).button.hidden) return { tool: object.userData.tool };
+      object = object.parent;
+    }
+    return null;
   }
-  return raycaster.intersectObjects(tiles)[0]?.object.userData.position;
+  if (!boardHit) return null;
+  let object = boardHit.object;
+  while (!object.userData.position && object.parent) object = object.parent;
+  return { tile: object.userData.position };
 }
 
 renderer.domElement.addEventListener('pointermove', event => {
   if (event.pointerType !== 'mouse') return;
-  const tile = pick(event);
-  if (tile) select(...tile);
+  const hit = pick(event);
+  renderer.domElement.style.cursor = hit?.tool || hit?.latch ? 'pointer' : '';
+  if (hit?.tile) select(...hit.tile);
   else highlight.visible = false;
 });
-renderer.domElement.addEventListener('pointerleave', () => { highlight.visible = false; });
+renderer.domElement.addEventListener('pointerleave', () => {
+  highlight.visible = false;
+  renderer.domElement.style.cursor = '';
+});
 renderer.domElement.addEventListener('click', event => {
-  const tile = pick(event);
-  if (tile) {
-    act(...tile);
-    select(...tile);
+  const hit = pick(event);
+  if (hit?.latch) toggleDrawer();
+  else if (hit?.tool) selectTool(hit.tool);
+  else if (hit?.tile) {
+    act(...hit.tile);
+    select(...hit.tile);
   }
 });
 stage.addEventListener('focus', () => select(...selection));
@@ -1150,76 +1177,105 @@ function buildPliers(parent, handle, steel, gilt) {
   cylinder(parent, gilt, 0.057, 0.056, 0, 0.035, 0);
 }
 
-function renderToolThumbnails(buttons) {
-  const showcase = new THREE.Scene();
-  showcase.environment = reflection;
-  showcase.environmentIntensity = 1.85;
-  showcase.add(new THREE.HemisphereLight(0xe0edff, 0x9b6940, 2.1));
-  const keyLight = new THREE.DirectionalLight(0xffedcf, 4.1);
-  keyLight.position.set(-3, 5, 4);
-  showcase.add(keyLight);
-  const edgeLight = new THREE.DirectionalLight(0xb1c6ff, 2.5);
-  edgeLight.position.set(1, 3, -4);
-  showcase.add(edgeLight);
+const buttons = [...document.querySelectorAll('[data-tool]')];
+const caseParts = new THREE.Group();
+scene.add(caseParts);
+castBlock(caseParts, frame, 7.46, 0.16, 7.44, 0, -1.62, 0, 0.06);
+castBlock(caseParts, frame, 7.37, 0.13, 7.34, 0, -1.013, 0, 0.046);
+castBlock(caseParts, frame, 7.35, 0.50, 0.23, 0, -1.30, -3.55, 0.052);
+for (const x of [-3.57, 3.57]) {
+  castBlock(caseParts, frame, 0.26, 0.52, 7.32, x, -1.30, 0, 0.052);
+  box(caseParts, inlay, 0.016, 0.020, 7.1, x * 1.039, -1.43, 0);
+}
+const drawer = new THREE.Group();
+const closedDrawerZ = 2.98;
+const revealedDrawerZ = 4.30;
+drawer.position.set(0, -1.46, closedDrawerZ);
+caseParts.add(drawer);
+castBlock(drawer, frame, 6.93, 0.10, 1.52, 0, -0.055, 0, 0.034);
+castBlock(drawer, frame, 7.05, 0.40, 0.185, 0, 0.125, 0.72, 0.043);
+castBlock(drawer, velvet, 6.81, 0.079, 1.25, 0, 0.027, -0.016, 0.024);
+for (const x of [-3.39, 3.39]) {
+  castBlock(drawer, brass, 0.048, 0.053, 1.18, x, 0.054, -0.08, 0.016);
+}
+const handleAssembly = new THREE.Group();
+handleAssembly.position.set(0, 0.128, 0.826);
+handleAssembly.userData.latch = true;
+drawer.add(handleAssembly);
+castBlock(handleAssembly, bronze, 0.78, 0.237, 0.044, 0, 0, 0, 0.017);
+const handleRing = mesh(new THREE.TorusGeometry(0.108, 0.022, 10, 26), inlay, handleAssembly, 0, 0, 0.045);
+handleRing.scale.x = 1.8;
+for (const x of [-0.247, 0.247]) mesh(rivetGeometry, brass, handleAssembly, x, 0, 0.032);
+mesh(crestGeometry, inlay, handleAssembly, 0, 0, 0.054).scale.setScalar(0.63);
 
-  const steel = material(0x838b92, 0.79, 0.28);
-  const gold = material(0xeaba6c, 0.77, 0.25);
-  const copper = material(0xaf6b46, 0.71, 0.26);
-  const darkBrass = material(0x936337, 0.75, 0.34);
-  const handle = material(0x59303a, 0.19, 0.38);
-  const aspect = 1.62;
-  const camera = new THREE.OrthographicCamera(-aspect, aspect, 1, -1, 0.1, 16);
-  const center = new THREE.Vector3();
-  const size = new THREE.Vector3();
-  renderer.setSize(174, 108, false);
-  for (const button of buttons) {
-    const type = button.dataset.tool;
-    const model = new THREE.Group();
-    showcase.add(model);
-    if (type === 'remove') {
-      buildPliers(model, handle, steel, gold);
-      model.rotation.y = -0.92;
-    } else {
-      buildPipeModel(model, type, { body: riseByPort[type] ? copper : steel, collar: gold, rivet: darkBrass });
-    }
-
-    const bounds = new THREE.Box3().setFromObject(model);
-    bounds.getCenter(center);
-    bounds.getSize(size);
-    const halfHeight = Math.max(0.40, Math.max(size.x, size.z) * 0.40 + size.y * 0.33);
-    camera.left = -halfHeight * aspect;
-    camera.right = halfHeight * aspect;
-    camera.top = halfHeight;
-    camera.bottom = -halfHeight;
-    camera.position.copy(center).add(new THREE.Vector3(1.7, 3.9, 4.3));
-    camera.lookAt(center);
-    camera.updateProjectionMatrix();
-    renderer.render(showcase, camera);
-
-    const icon = document.createElement('canvas');
-    icon.width = renderer.domElement.width;
-    icon.height = renderer.domElement.height;
-    icon.className = 'tool-thumbnail';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.getContext('2d').drawImage(renderer.domElement, 0, 0);
-    const label = document.createElement('span');
-    label.className = 'tool-label';
-    label.textContent = button.textContent.trim();
-    button.replaceChildren(icon, label);
-    model.removeFromParent();
+const rackSteel = material(0x79828b, 0.70, 0.25);
+const rackGold = material(0xe2ae66, 0.72, 0.27);
+const rackCopper = material(0xbb7952, 0.63, 0.33);
+const rackHandle = material(0x632e40, 0.22, 0.41);
+const selectedLining = material(0x464d83, 0.08, 0.86);
+const emptyLining = material(0x0d132d, 0.07, 0.97);
+const rackSlots = new Map();
+for (const [index, button] of buttons.entries()) {
+  const type = button.dataset.tool;
+  const slot = new THREE.Group();
+  slot.position.x = (index - 3) * 0.94;
+  slot.userData.tool = type;
+  drawer.add(slot);
+  const cushion = castBlock(slot, emptyLining, 0.87, 0.072, 1.09, 0, 0.075, -0.065, 0.023);
+  box(slot, bronze, 0.72, 0.012, 0.024, 0, 0.117, 0.458);
+  const model = new THREE.Group();
+  if (type === 'remove') {
+    buildPliers(model, rackHandle, rackSteel, rackGold);
+    model.rotation.y = -0.92;
+  } else {
+    buildPipeModel(model, type, { body: riseByPort[type] ? rackCopper : rackSteel, collar: rackGold, rivet: bronze });
   }
-  for (const finish of [steel, gold, copper, darkBrass, handle]) finish.dispose();
+  model.scale.setScalar(0.63);
+  const bounds = new THREE.Box3().setFromObject(model);
+  model.position.y = 0.105 - bounds.min.y;
+  slot.add(model);
+  rackSlots.set(type, { model, cushion, button });
 }
 
-const buttons = [...document.querySelectorAll('[data-tool]')];
-renderToolThumbnails(buttons);
+let drawerMotion = 0;
+function toggleDrawer() {
+  const focusWasInRack = drawerPanel.contains(document.activeElement);
+  drawerOpen = !drawerOpen;
+  drawerDiscovered ||= drawerOpen;
+  if (drawerOpen) selectTool(tool);
+  drawerLatch.setAttribute('aria-expanded', String(drawerOpen));
+  drawerLabel.textContent = drawerOpen ? 'Stow pipe rack' : drawerDiscovered ? 'Open pipe rack' : 'Release pipe rack';
+  drawerPanel.inert = !drawerOpen;
+  drawerPanel.classList.toggle('revealed', drawerOpen);
+  if (!drawerOpen && focusWasInRack) drawerLatch.focus();
+}
+
+function moveDrawer(dt) {
+  const target = drawerOpen ? 1 : 0;
+  if (target === drawerMotion) return;
+  drawerMotion += Math.sign(target - drawerMotion) * Math.min(dt * 2.7, Math.abs(target - drawerMotion));
+  const progress = drawerMotion * drawerMotion * (3 - 2 * drawerMotion);
+  drawer.position.z = THREE.MathUtils.lerp(closedDrawerZ, revealedDrawerZ, progress);
+  handleRing.rotation.x = -0.43 * Math.sin(progress * Math.PI);
+  resize();
+}
+
+function selectTool(type) {
+  const slot = rackSlots.get(type);
+  if (!slot || slot.button.hidden) return;
+  tool = type;
+  for (const [name, { button, cushion }] of rackSlots) {
+    const selected = name === type;
+    button.setAttribute('aria-pressed', String(selected));
+    cushion.material = selected ? selectedLining : emptyLining;
+  }
+  if (drawerDiscovered) selectedTool.textContent = slot.button.textContent.trim();
+  if (highlight.visible) select(...selection);
+}
+
+drawerLatch.addEventListener('click', toggleDrawer);
 for (const button of buttons) {
-  button.addEventListener('click', () => {
-    if (button.hidden) return;
-    tool = button.dataset.tool;
-    for (const item of buttons) item.setAttribute('aria-pressed', String(item === button));
-    if (highlight.visible) select(...selection);
-  });
+  button.addEventListener('click', () => selectTool(button.dataset.tool));
 }
 
 const vapor = document.createElement('canvas');
@@ -1325,6 +1381,14 @@ const boardBounds = boxCorners({
   min: new THREE.Vector3(-3.7, -0.91, -3.7),
   max: new THREE.Vector3(3.7, 0.08, 3.7),
 });
+const caseBounds = boxCorners({
+  min: new THREE.Vector3(-3.74, -1.71, -3.73),
+  max: new THREE.Vector3(3.74, -0.94, 3.73),
+});
+const rackBounds = boxCorners({
+  min: new THREE.Vector3(-3.55, -0.105, -0.76),
+  max: new THREE.Vector3(3.55, 0.68, 0.91),
+});
 const cameraPoint = new THREE.Vector3();
 let turnStart = 0;
 let turnTarget = 0;
@@ -1348,15 +1412,24 @@ function resize() {
   let bottom = Infinity;
   let top = -Infinity;
   tray.updateWorldMatrix(true, false);
-  for (const corner of [...boardBounds, ...level.fixtureBounds]) {
-    cameraPoint.copy(corner).applyMatrix4(tray.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
-    const x = cameraPoint.x / -cameraPoint.z;
-    const y = cameraPoint.y / -cameraPoint.z;
-    left = Math.min(left, x);
-    right = Math.max(right, x);
-    bottom = Math.min(bottom, y);
-    top = Math.max(top, y);
-  }
+  drawer.updateWorldMatrix(true, false);
+  const fitCorners = (points, transform) => {
+    for (const corner of points) {
+      cameraPoint.copy(corner);
+      if (transform) cameraPoint.applyMatrix4(transform);
+      cameraPoint.applyMatrix4(camera.matrixWorldInverse);
+      const x = cameraPoint.x / -cameraPoint.z;
+      const y = cameraPoint.y / -cameraPoint.z;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      bottom = Math.min(bottom, y);
+      top = Math.max(top, y);
+    }
+  };
+  fitCorners(boardBounds, tray.matrixWorld);
+  fitCorners(level.fixtureBounds, tray.matrixWorld);
+  fitCorners(caseBounds);
+  fitCorners(rackBounds, drawer.matrixWorld);
   const halfHeight = Math.max((top - bottom) / 1.72, (right - left) / (1.84 * aspect));
   camera.aspect = aspect;
   camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight));
@@ -1486,6 +1559,9 @@ function selectLevel(index) {
       button.hidden = !level.bendRisers;
     }
   }
+  for (const slot of rackSlots.values()) {
+    slot.model.visible = !slot.button.hidden;
+  }
   clearSteamAndSelection();
   if (level.pipes.size) updateFlow();
   else reset();
@@ -1504,6 +1580,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(elapsed, 0.05);
   previous = now;
   turnTray(Math.min(elapsed, 0.26));
+  moveDrawer(Math.min(elapsed, 0.26));
   animateMachine(dt);
   animateGauge(elapsed);
   animateSteam(dt);
