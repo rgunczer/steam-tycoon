@@ -70,7 +70,7 @@ select {
   color: #2b1c18;
   box-shadow: inset 0 0 0 2px #a2784a4d;
 }
-#stage { height: clamp(310px, 62vh, 690px); border-radius: inherit; }
+#stage { border-radius: inherit; }
 #stage canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; border-radius: inherit; }
 .workshop-instruments {
   min-height: 43px;
@@ -122,7 +122,6 @@ select {
   .pressure-label { font-size: .61rem; }
   .pressure-label strong { font-size: 1.05rem; }
   .pressure svg { width: 48px; }
-  #stage { height: clamp(280px, 49vh, 440px); }
   .view-controls button { min-height: 40px; }
 }
 @media (max-width: 365px) {
@@ -271,7 +270,6 @@ header::after { right: 6px; border-right: 2px solid #d4a66b; border-radius: 0 12
 .play-notes { margin: 0; padding: 12px 9px 4px; }
 @media (max-width: 560px) {
   .gift-case { padding: 4px; }
-  .gift-case #stage { height: clamp(283px, 48vh, 435px); }
   .case-hardware { gap: 6px 10px; padding-inline: 7px; }
   .view-panel { margin-left: 0; }
   .drawer-panel .tools { padding-inline: 5px; }
@@ -304,3 +302,19 @@ header::after { right: 6px; border-right: 2px solid #d4a66b; border-radius: 0 12
 .history-controls { display: flex; gap: 4px; }
 .history-controls button { min-height: 39px; padding-inline: 8px; }
 .history-controls button:disabled { opacity: .49; cursor: default; }
+
+.gift-case #stage { height: clamp(530px, 81vh, 960px); }
+.access-controls { margin: 5px 2px 1px; }
+.access-controls > summary {
+  width: fit-content;
+  padding: 9px 7px;
+  color: #f0d6ad;
+  cursor: pointer;
+  font-size: .79rem;
+}
+.access-controls > summary:focus-visible { outline: 2px solid #ffe2a6; outline-offset: 2px; }
+.access-controls[open] > summary { margin-bottom: 5px; }
+.accessible-readouts { border-inline: 1px solid #a77548; }
+@media (max-width: 640px) {
+  .gift-case #stage { height: clamp(410px, 69vh, 625px); }
+}

@@ -101,7 +101,7 @@ const pipeHeight = 0.27;
 const heightStep = 0.68;
 const maxHeight = 2;
 const stage = document.querySelector('#stage');
-const workshop = document.querySelector('#workshop');
+const giftCase = document.querySelector('.gift-case');
 const drawerLatch = document.querySelector('#drawer-latch');
 const drawerPanel = document.querySelector('#drawer-panel');
 const drawerLabel = document.querySelector('#drawer-label');
@@ -128,7 +128,14 @@ const viewDistance = 17;
 let viewTurns = 0;
 let overhead = false;
 
+let inspectingLid = false;
 function aimCamera() {
+  if (inspectingLid) {
+    camera.position.set(0, 4.25, 0.12);
+    camera.lookAt(0, 0.77, -4.31);
+    camera.updateMatrixWorld();
+    return;
+  }
   const [heading, tilt] = level.view;
   const azimuth = THREE.MathUtils.degToRad(overhead ? 0 : heading);
   const elevation = THREE.MathUtils.degToRad(overhead ? 89.99 : tilt);
@@ -1177,7 +1184,7 @@ function updateFlow() {
   for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
   }
-  workshop.classList.toggle('powered', powered);
+  giftCase.classList.toggle('powered', powered);
   const leakStatus = leakCount === 1 ? '1 leak' : `${leakCount} leaks`;
   const machineName = level.machineName ?? level.name;
   const message = level.machines.size === 1
@@ -1422,13 +1429,17 @@ function pick(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.set(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height);
   raycaster.setFromCamera(pointer, camera);
-  const fixtureHit = raycaster.intersectObjects(level.group.children)[0];
-  const tileHit = raycaster.intersectObjects(tiles)[0];
+  const fixtureHit = inspectingLid ? null : raycaster.intersectObjects(level.group.children)[0];
+  const tileHit = inspectingLid ? null : raycaster.intersectObjects(tiles)[0];
   const boardHit = fixtureHit && (!tileHit || fixtureHit.distance < tileHit.distance) ? fixtureHit : tileHit;
-  const boxHit = raycaster.intersectObjects(caseParts.children.filter(object => object.visible))[0];
+  const boxHit = raycaster.intersectObjects(inspectingLid ? [lid] : caseParts.children.filter(object => object.visible))[0];
   if (boxHit && (!boardHit || boxHit.distance < boardHit.distance)) {
     let object = boxHit.object;
     while (object !== caseParts) {
+      if (object.userData.control) {
+        const control = object.userData.control;
+        return control.disabled() ? null : { control };
+      }
       if (object.userData.latch) return { latch: true };
       if (object.userData.rewardLatch && rewardFraction > 0.65) return { rewardLatch: true };
       if (object.userData.tool && drawerOpen && drawerMotion > 0.82
@@ -1446,7 +1457,8 @@ function pick(event) {
 renderer.domElement.addEventListener('pointermove', event => {
   if (event.pointerType !== 'mouse') return;
   const hit = pick(event);
-  renderer.domElement.style.cursor = hit?.tool || hit?.latch || hit?.rewardLatch ? 'pointer' : '';
+  hoveredControl = hit?.control ?? null;
+  renderer.domElement.style.cursor = hit?.tool || hit?.latch || hit?.rewardLatch || hit?.control ? 'pointer' : '';
   if (hit?.tile) select(...hit.tile);
   else {
     highlight.visible = false;
@@ -1454,6 +1466,7 @@ renderer.domElement.addEventListener('pointermove', event => {
   }
 });
 renderer.domElement.addEventListener('pointerleave', () => {
+  hoveredControl = null;
   if (touchPreview !== null) return;
   highlight.visible = false;
   hidePreview();
@@ -1461,7 +1474,13 @@ renderer.domElement.addEventListener('pointerleave', () => {
 });
 renderer.domElement.addEventListener('click', event => {
   const hit = pick(event);
-  if (hit?.latch) toggleDrawer();
+  if (hit?.control) {
+    touchPreview = null;
+    highlight.visible = false;
+    hidePreview();
+    hit.control.invoke();
+    playSound('tap');
+  } else if (hit?.latch) toggleDrawer();
   else if (hit?.rewardLatch) toggleReward();
   else if (hit?.tool) selectTool(hit.tool);
   else if (hit?.tile) {
@@ -1478,7 +1497,7 @@ renderer.domElement.addEventListener('click', event => {
     select(x, z);
   }
 });
-stage.addEventListener('focus', () => select(...selection));
+stage.addEventListener('focus', () => { if (!inspectingLid) select(...selection); });
 stage.addEventListener('blur', event => {
   if (event.relatedTarget === turnPiece) return;
   touchPreview = null;
@@ -1487,6 +1506,13 @@ stage.addEventListener('blur', event => {
 });
 turnPiece.addEventListener('click', rotatePreview);
 stage.addEventListener('keydown', event => {
+  if (inspectingLid) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      toggleLidInspection();
+    }
+    return;
+  }
   const pressed = event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && !event.altKey && ['z', 'y'].includes(pressed)) {
     event.preventDefault();
@@ -1878,6 +1904,7 @@ function animateGauge(elapsed) {
   // Leave room past the last tick so the needle can rebound at full pressure.
   const sweep = -120 + 2.4 * THREE.MathUtils.clamp(level.pressure, -3, 103);
   level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter);
+  lidNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter * 0.25);
   pressureHand.style.transform = `rotate(${(sweep + flutter * 0.19).toFixed(2)}deg)`;
 }
 
@@ -1940,13 +1967,16 @@ function resize() {
       top = Math.max(top, y);
     }
   };
-  fitCorners(boardBounds, tray.matrixWorld);
-  fitCorners(level.fixtureBounds, tray.matrixWorld);
-  fitCorners(caseBounds);
-  fitCorners(rackBounds, drawer.matrixWorld);
-  if (rewardDrawer.visible) {
-    rewardDrawer.updateWorldMatrix(true, false);
-    fitCorners(rewardBounds, rewardDrawer.matrixWorld);
+  fitCorners(lidBounds);
+  if (!inspectingLid) {
+    fitCorners(boardBounds, tray.matrixWorld);
+    fitCorners(level.fixtureBounds, tray.matrixWorld);
+    fitCorners(caseBounds);
+    fitCorners(rackBounds, drawer.matrixWorld);
+    if (rewardDrawer.visible) {
+      rewardDrawer.updateWorldMatrix(true, false);
+      fitCorners(rewardBounds, rewardDrawer.matrixWorld);
+    }
   }
   const halfHeight = Math.max((top - bottom) / 1.72, (right - left) / (1.84 * aspect));
   camera.aspect = aspect;
@@ -1973,6 +2003,7 @@ function updateView() {
   turnStart = tray.rotation.y;
   turnTarget = turnStart + delta;
   turnProgress = Math.abs(delta) < 0.001 ? 1 : 0;
+  inspectingLid = false;
   aimCamera();
   resize();
   overheadButton.setAttribute('aria-pressed', String(overhead));
@@ -2172,6 +2203,168 @@ drawerDiscovered = progress.drawerDiscovered;
 if (drawerDiscovered) drawerLabel.textContent = 'Open pipe rack';
 const savedIndex = levels.findIndex(({ name }) => name === progress.board);
 if (savedIndex !== -1) levelSelect.value = String(savedIndex);
+const lid = new THREE.Group();
+lid.position.set(0, 0.77, -4.31);
+lid.rotation.x = -0.66;
+caseParts.add(lid);
+castBlock(lid, frame, 7.48, 2.1, 0.19, 0, 0, -0.056, 0.056);
+castBlock(lid, velvet, 7.23, 1.88, 0.07, 0, 0, 0.060, 0.021);
+for (const y of [-0.949, 0.949]) {
+  box(lid, inlay, 7.14, 0.016, 0.021, 0, y, 0.103);
+}
+for (const x of [-3.58, 3.58]) {
+  box(lid, inlay, 0.017, 1.90, 0.022, x, 0, 0.103);
+  for (const y of [-0.83, 0.83]) {
+    const ornament = mesh(crestGeometry, brass, lid, x * 0.971, y, 0.109);
+    ornament.rotation.z = Math.PI / 2 * Math.sign(x) * Math.sign(y);
+    ornament.scale.setScalar(0.86);
+  }
+}
+for (const x of [-2.60, 2.60]) {
+  const hinge = cylinder(lid, bronze, 0.081, 0.38, x, -1.021, 0.026, 'x');
+  hinge.castShadow = false;
+  castBlock(caseParts, frame, 0.23, 0.87, 0.17, x, -0.43, -3.72, 0.044);
+}
+
+function engraving(parent, width, height, x, y, z, options = {}) {
+  const { color = '#f4d8a5', italic = false, fontScale = 0.68 } = options;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width * 260);
+  canvas.height = Math.round(height * 260);
+  const pen = canvas.getContext('2d');
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const ink = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, depthWrite: false, toneMapped: false,
+  });
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(width, height), ink);
+  label.position.set(x, y, z);
+  parent.add(label);
+  let cached;
+  return function setText(text) {
+    if (cached === text) return;
+    cached = text;
+    pen.clearRect(0, 0, canvas.width, canvas.height);
+    pen.font = `${italic ? 'italic ' : ''}600 ${Math.round(canvas.height * fontScale)}px Georgia, serif`;
+    pen.textAlign = 'center';
+    pen.textBaseline = 'middle';
+    pen.fillStyle = color;
+    pen.fillText(text, canvas.width / 2, canvas.height * 0.53, canvas.width * 0.96);
+    texture.needsUpdate = true;
+  };
+}
+
+const titleStamp = engraving(lid, 2.09, 0.38, -2.42, 0.57, 0.105, { italic: true });
+titleStamp('Steam Tycoon');
+mesh(crestGeometry, inlay, lid, -3.19, 0.135, 0.107).scale.setScalar(1.18);
+const inHandStamp = engraving(lid, 1.74, 0.21, -2.43, -0.18, 0.127);
+castBlock(lid, bronze, 2.69, 0.485, 0.061, 0.22, 0.57, 0.116, 0.019);
+const ivoryPlate = material(0xdab684, 0.22, 0.48);
+castBlock(lid, ivoryPlate, 2.59, 0.398, 0.041, 0.22, 0.57, 0.148, 0.015);
+const boardStamp = engraving(lid, 2.43, 0.261, 0.22, 0.57, 0.172, { color: '#2c1a16' });
+const statusStamp = engraving(lid, 3.39, 0.244, 0.09, -0.153, 0.128);
+const ledgerStamp = engraving(lid, 3.0, 0.192, 0.21, 0.193, 0.116);
+const dial = new THREE.Group();
+dial.position.set(2.78, 0.40, 0.106);
+lid.add(dial);
+cylinder(dial, bronze, 0.415, 0.071, 0, 0, 0, 'z');
+mesh(new THREE.CircleGeometry(0.374, 44), gaugeFace, dial, 0, 0, 0.042);
+mesh(new THREE.TorusGeometry(0.389, 0.022, 10, 42), brass, dial, 0, 0, 0.046);
+const lidNeedle = new THREE.Group();
+dial.add(lidNeedle);
+box(lidNeedle, gaugeRed, 0.039, 0.335, 0.012, 0, 0.121, 0.052);
+cylinder(dial, brass, 0.043, 0.025, 0, 0, 0.063, 'z');
+const pressureStamp = engraving(lid, 1.14, 0.217, 2.78, -0.21, 0.120);
+const ledgerMark = mesh(rivetGeometry, collarActive, lid, -1.59, -0.156, 0.136);
+ledgerMark.scale.setScalar(0.90);
+
+const keyFinish = material(0xd9b179, 0.37, 0.36);
+const keyHover = material(0xffdb98, 0.46, 0.32);
+const keyPressed = material(0xb6804a, 0.53, 0.37);
+const keyDisabled = material(0x7d6b59, 0.25, 0.64);
+const lidControls = [];
+let hoveredControl = null;
+
+function castKey(x, y, width, label, invoke, disabled = () => false, pressed = () => false, height = 0.323) {
+  const group = new THREE.Group();
+  group.position.set(x, y, 0.122);
+  lid.add(group);
+  castBlock(group, bronze, width + 0.031, height + 0.038, 0.068, 0, 0, 0, 0.019);
+  const keyTop = castBlock(group, keyFinish, width, height, 0.047, 0, 0, 0.042, 0.016);
+  const write = engraving(group, width - 0.041, 0.220, 0, 0, 0.071, { color: '#251814', fontScale: 0.80 });
+  const control = { keyTop, write, label, invoke, disabled, pressed };
+  group.userData.control = control;
+  lidControls.push(control);
+}
+
+function moveBoard(amount) {
+  const next = Number(levelSelect.value) + amount;
+  if (next < 0 || next >= levels.length) return;
+  levelSelect.value = String(next);
+  levelSelect.dispatchEvent(new Event('change'));
+}
+
+function toggleLidInspection() {
+  inspectingLid = !inspectingLid;
+  hoveredControl = null;
+  stage.focus({ preventScroll: true });
+  highlight.visible = false;
+  hidePreview();
+  aimCamera();
+  resize();
+}
+castKey(-2.35, 0.13, 1.01, () => inspectingLid ? 'Return' : 'Inspect lid', toggleLidInspection);
+castKey(-1.40, 0.57, 0.43, () => '‹', () => moveBoard(-1), () => Number(levelSelect.value) === 0);
+castKey(1.84, 0.57, 0.43, () => '›', () => moveBoard(1), () => Number(levelSelect.value) === levels.length - 1);
+
+function cycleHeight() {
+  const allowed = [...heightGuide.options].filter(option => !option.disabled);
+  const index = allowed.findIndex(option => option.selected);
+  heightGuide.value = allowed[(index + 1) % allowed.length].value;
+  heightGuide.dispatchEvent(new Event('change'));
+}
+
+const keyActions = [
+  ['Rack', drawerLatch, () => drawerOpen],
+  ['Turn', turnPiece],
+  ['Undo', undoButton],
+  ['Redo', redoButton],
+  ['Reset', document.querySelector('#reset')],
+  ['Fitting', rewardLatch, () => rewardOpen, null, () => rewardPlate.hidden],
+  ['Left', document.querySelector('#view-left')],
+  ['Right', document.querySelector('#view-right')],
+  ['Top', overheadButton, () => overhead],
+  ['Home', homeButton],
+  ['Height', heightGuide, () => heightGuide.value !== '', cycleHeight, () => heightControl.hidden],
+  ['Sound', soundButton, () => !muted],
+];
+
+for (const [i, [label, button, pressed, invoke, disabled]] of keyActions.entries()) {
+  castKey((i % 6 - 2.5) * 1.12, i < 6 ? -0.423 : -0.754, 1.03,
+    label === 'Height' ? () => heightGuide.value ? `Level ${heightGuide.value}` : 'Height' : () => label,
+    invoke ?? (() => button.click()), disabled ?? (() => button.disabled), pressed, 0.257);
+}
+
+const lidBounds = boxCorners(new THREE.Box3().setFromObject(lid));
+
+function updateCaseLid() {
+  const number = Number(levelSelect.value) + 1;
+  boardStamp(`${level.solved ? "✓ " : ""}${number} · ${level.name}`);
+  ledgerStamp(ledgerCount.textContent);
+  pressureStamp(`Pressure ${pressureReadout.textContent}`);
+  inHandStamp(drawerDiscovered ? `In hand · ${selectedTool.textContent}` : 'Release the pipe rack');
+  statusStamp(rewardOpen ? rewardLabel.textContent : status.textContent);
+  ledgerMark.material = powered ? collarActive : bronze;
+  for (const control of lidControls) {
+    const { keyTop, label, write, disabled, pressed } = control;
+    write(label());
+    keyTop.material = disabled() ? keyDisabled
+      : hoveredControl === control ? keyHover
+      : pressed() ? keyPressed : keyFinish;
+  }
+}
+
 selectLevel(Number(levelSelect.value));
 new ResizeObserver(resize).observe(stage);
 let previous = performance.now();
@@ -2185,6 +2378,7 @@ renderer.setAnimationLoop(now => {
   animateMachine(dt, elapsed);
   animateSnap(dt);
   animateGauge(elapsed);
+  updateCaseLid();
   animateSteam(dt);
   renderer.render(scene, camera);
 });
