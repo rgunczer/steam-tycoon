@@ -278,3 +278,24 @@ header::after { right: 6px; border-right: 2px solid #d4a66b; border-radius: 0 12
   .drawer-panel .tools button { min-height: 44px; margin: 3px 0; }
   .drawer-panel .tools button:first-child, .drawer-panel .tools button:last-child { margin-inline: 0; }
 }
+
+.reward-plate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 5px 10px;
+  border-top: 1px solid #a78251;
+  background: linear-gradient(110deg, #312b41, #191c35 75%);
+  color: #ffebc2;
+  font-size: .88rem;
+}
+.reward-plate[hidden] { display: none; }
+.reward-plate button, #turn-piece { min-height: 39px; padding-inline: 8px; }
+#turn-piece:disabled { opacity: .5; cursor: default; }
+.instructions .touch-notes { display: none; margin-top: 5px; }
+@media (pointer: coarse) {
+  .instructions .touch-notes { display: block; }
+}

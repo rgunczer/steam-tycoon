@@ -59,13 +59,17 @@
         </div>
       </header>
       <section id="workshop" aria-label="Steam pipe puzzle">
-        <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate a tile, and Delete to remove a pipe."></div>
+        <div id="stage" tabindex="0" aria-label="Pipe board. Use arrow keys to select a tile, Enter to use the selected tool, R to rotate the piece in hand or on the selected tile, and Delete to remove a pipe."></div>
         <div class="workshop-instruments">
           <div class="readout">
             <span class="indicator"></span>
             <p id="status" role="status">Boiler on · Flywheel idle</p>
           </div>
           <div class="legend"><span>● Boiler</span><span>◉ <span id="receiver-name">Flywheel</span></span><span id="fixed-legend" hidden>◆ Fixed pipes</span></div>
+        </div>
+        <div id="reward-plate" class="reward-plate" hidden>
+          <span id="reward-label" role="status"></span>
+          <button id="reward-latch" type="button" aria-expanded="false">Reveal fitting</button>
         </div>
       </section>
       <section class="controls" aria-label="Gift box fittings">
@@ -75,6 +79,7 @@
             <span id="drawer-label">Release pipe rack</span>
           </button>
           <div class="selected-plate">In hand <strong id="selected-tool">—</strong></div>
+          <button id="turn-piece" type="button" disabled>Turn piece</button>
           <details class="view-panel">
             <summary>View controls</summary>
             <div class="view-controls" role="group" aria-label="Board camera">
@@ -82,6 +87,7 @@
               <button id="view-right" type="button" aria-label="Rotate view right" title="Rotate view right"><span aria-hidden="true">↷</span> Right</button>
               <button id="view-overhead" type="button" aria-pressed="false">Overhead</button>
               <button id="view-home" type="button" disabled>Reset view</button>
+              <button id="sound" type="button" aria-pressed="false" aria-label="Mute sound">Sound on</button>
             </div>
           </details>
         </div>
@@ -98,7 +104,7 @@
         </div>
       </section>
       <div class="play-notes">
-        <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p></div>
+        <div class="instructions"><h2>Build a steam line</h2><p id="goal">Connect the boiler to the flywheel. Tap a placed pipe to turn it.</p><p class="touch-notes">Tap an empty tile to preview, then tap it again to place.</p></div>
         <label class="level-picker" id="height-control" for="height-guide" hidden>Highlight height
           <select id="height-guide">
             <option value="">Off</option>

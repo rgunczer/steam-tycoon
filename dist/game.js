@@ -106,6 +106,11 @@ const drawerLatch = document.querySelector('#drawer-latch');
 const drawerPanel = document.querySelector('#drawer-panel');
 const drawerLabel = document.querySelector('#drawer-label');
 const selectedTool = document.querySelector('#selected-tool');
+const turnPiece = document.querySelector('#turn-piece');
+const soundButton = document.querySelector('#sound');
+const rewardPlate = document.querySelector('#reward-plate');
+const rewardLabel = document.querySelector('#reward-label');
+const rewardLatch = document.querySelector('#reward-latch');
 let drawerOpen = false;
 let drawerDiscovered = false;
 const status = document.querySelector('#status');
@@ -616,6 +621,7 @@ function buildLevel(definition) {
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
     ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0, pressureVelocity: 0,
+    completionTime: 0, rewardShown: false,
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
     ])),
@@ -794,7 +800,7 @@ function buildReceiver(group, position, port, build, height) {
   return {
     port, lampMaterial, lampLight,
     vent: { ...ventPosition, dx: 0, dz: 0 },
-    animate: build(mechanism), powered: false, speed: 0, phase: 0,
+    animate: build(mechanism), powered: false, speed: 0, phase: 0, startup: 0,
   };
 }
 
@@ -1039,6 +1045,8 @@ const collarGeometry = new THREE.LatheGeometry([
 const gasketGeometry = new THREE.CylinderGeometry(0.144, 0.144, 0.017, 28, 1, true);
 const boards = [];
 let tool = 'straight';
+let previewRotation = 0;
+let touchPreview = null;
 let powered = false;
 let outlets = [];
 let warmJoints = [];
@@ -1079,7 +1087,7 @@ function buildPipeModel(group, type, finish, fixed = false) {
     else flange.rotation.x = Math.PI / 2;
     group.add(flange);
     const collar = mesh(collarGeometry, finish.collar, flange);
-    mesh(gasketGeometry, gasket, flange, 0, -0.041, 0);
+    mesh(gasketGeometry, finish.gasket ?? gasket, flange, 0, -0.041, 0);
     for (let i = 0; i < 4; i++) {
       const angle = (i + 0.5) * Math.PI / 2;
       mesh(rivetGeometry, finish.rivet, flange, Math.cos(angle) * 0.128, 0.025, Math.sin(angle) * 0.128);
@@ -1094,10 +1102,20 @@ function portsAt(index) {
   const machine = level.machines.get(index);
   if (machine) return [{ direction: machine.port, height }];
   const pipe = level.pipes.get(index);
-  return pipe ? pipePorts[pipe.type].map((port, i) => ({
-    direction: (port + pipe.rotation) % 4,
-    height: height + (riseByPort[pipe.type]?.[i] ?? 0),
-  })) : [];
+  return pipe ? piecePorts(pipe.type, pipe.rotation, height) : [];
+}
+
+function piecePorts(type, rotation, height) {
+  return pipePorts[type].map((port, i) => ({
+    direction: (port + rotation) % 4,
+    height: height + (riseByPort[type]?.[i] ?? 0),
+    raised: Boolean(riseByPort[type]?.[i]),
+  }));
+}
+
+function matchingPort(x, z, direction, height) {
+  return inside(x, z) && portsAt(key(x, z)).some(port =>
+    port.direction === (direction + 2) % 4 && port.height === height);
 }
 
 function updateFlow() {
@@ -1112,8 +1130,7 @@ function updateFlow() {
     for (const { direction, height } of portsAt(index)) {
       const [dx, dz] = directions[direction];
       const next = key(x + dx, z + dz);
-      const matched = inside(x + dx, z + dz) && portsAt(next).some(port =>
-        port.direction === (direction + 2) % 4 && port.height === height);
+      const matched = matchingPort(x + dx, z + dz, direction, height);
       if (!matched) {
         leaks.push({
           x: world(x) + 0.49 * dx, y: pipeHeight + height * heightStep,
@@ -1134,16 +1151,21 @@ function updateFlow() {
   const leakCount = leaks.length;
   let supplied = 0;
   for (const [index, machine] of level.machines) {
+    const wasPowered = machine.powered;
     machine.powered = active.has(index);
+    if (machine.powered && !wasPowered) {
+      machine.startup = 0;
+      playSound('hiss');
+    }
     if (machine.powered) {
       supplied++;
       leaks.push(machine.vent);
     }
     machine.lampMaterial.emissive.setHex(machine.powered ? 0xff9b28 : 0x000000);
-    machine.lampMaterial.emissiveIntensity = 1.8;
-    machine.lampLight.intensity = machine.powered ? 1.75 : 0;
+    if (!machine.powered) machine.lampLight.intensity = 0;
   }
   powered = supplied === level.machines.size && leakCount === 0;
+  if (!powered) level.completionTime = 0;
   const supply = supplied / level.machines.size;
   level.targetPressure = Math.round((35 + 65 * supply) / (1 + 0.85 * leakCount));
   pressureMeter.setAttribute('aria-valuenow', String(level.targetPressure));
@@ -1193,16 +1215,127 @@ function act(x, z, action = tool) {
   if (!editable(x, z)) return;
   const index = key(x, z);
   const pipe = level.pipes.get(index);
-  if (action === 'remove') removePipe(index);
-  else if (pipe) {
+  if (action === 'remove') {
+    if (!pipe) return;
+    removePipe(index);
+    playSound('tap');
+  } else if (pipe) {
     pipe.rotation = (pipe.rotation + 1) % rotationCount[pipe.type];
     pipe.group.rotation.y = -pipe.rotation * Math.PI / 2;
-  } else if (canPlace(index, action)) addPipe(x, z, action, 0);
+    snapPiece(x, z, pipe.type, pipe.rotation);
+  } else if (action === 'rotate') {
+    rotatePreview();
+    return;
+  } else if (canPlace(index, action)) {
+    addPipe(x, z, action, previewRotation);
+    snapPiece(x, z, action, previewRotation);
+  } else return;
   updateFlow();
 }
 
 function canPlace(index, type) {
   return Object.hasOwn(pipePorts, type) && (!riseByPort[type] || heightAt(index) < maxHeight);
+}
+
+const ghostMaterial = new THREE.MeshBasicMaterial({
+  color: 0x365f79, transparent: true, opacity: 0.62, depthWrite: false, toneMapped: false,
+});
+const ghostBrass = ghostMaterial.clone();
+ghostBrass.color.setHex(0xd89c50);
+ghostBrass.opacity = 0.74;
+const previewModels = new Map();
+let visibleGhost;
+const previewMarkers = new THREE.Group();
+const snapMarkers = new THREE.Group();
+tray.add(previewMarkers, snapMarkers);
+const ringShape = new THREE.TorusGeometry(0.082, 0.017, 7, 19);
+const highMark = new THREE.OctahedronGeometry(0.068);
+const fitColor = 0xffbe62;
+const openColor = 0x8da6b9;
+const highColor = 0x76d9f7;
+
+function makeConnectionMarker(parent) {
+  const material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.74, depthWrite: false, toneMapped: false });
+  const marker = new THREE.Group();
+  const ring = new THREE.Mesh(ringShape, material);
+  const diamond = new THREE.Mesh(highMark, material);
+  ring.rotation.x = -Math.PI / 2;
+  diamond.position.y = 0.064;
+  marker.add(ring, diamond);
+  parent.add(marker);
+  return { marker, diamond, material };
+}
+
+const previewLights = Array.from({ length: 4 }, () => makeConnectionMarker(previewMarkers));
+const snapLights = Array.from({ length: 4 }, () => makeConnectionMarker(snapMarkers));
+let snapTime = 0;
+
+function positionMarkers(markers, x, z, type, rotation, onlyMatching) {
+  const ports = piecePorts(type, rotation, heightAt(key(x, z)));
+  for (const [i, { marker, diamond, material }] of markers.entries()) {
+    const port = ports[i];
+    marker.visible = false;
+    if (!port) continue;
+    const [dx, dz] = directions[port.direction];
+    const matched = matchingPort(x + dx, z + dz, port.direction, port.height);
+    if (onlyMatching && !matched) continue;
+    marker.position.set(world(x) + dx * 0.445, pipeHeight + port.height * heightStep + 0.18, world(z) + dz * 0.445);
+    marker.scale.setScalar(1);
+    material.color.setHex(matched ? fitColor : port.raised ? highColor : openColor);
+    material.opacity = matched ? 0.94 : 0.56;
+    diamond.visible = port.raised;
+    marker.visible = true;
+  }
+}
+
+function snapPiece(x, z, type, rotation) {
+  positionMarkers(snapLights, x, z, type, rotation, true);
+  snapMarkers.visible = true;
+  snapTime = 0.37;
+  playSound('tap');
+}
+
+function animateSnap(dt) {
+  snapTime = Math.max(0, snapTime - dt);
+  snapMarkers.visible = snapTime > 0;
+  if (!snapMarkers.visible) return;
+  for (const { marker, material } of snapLights) {
+    material.opacity = snapTime / 0.37;
+    marker.scale.setScalar(1.5 - snapTime);
+  }
+}
+
+function hidePreview() {
+  if (visibleGhost) visibleGhost.visible = false;
+  previewMarkers.visible = false;
+}
+
+function showPreview(x, z) {
+  hidePreview();
+  const index = key(x, z);
+  if (!drawerDiscovered || !editable(x, z) || level.pipes.has(index) || !canPlace(index, tool)) return;
+  if (!previewModels.has(tool)) {
+    const model = new THREE.Group();
+    buildPipeModel(model, tool, { body: ghostMaterial, collar: ghostBrass, rivet: ghostBrass, gasket: ghostMaterial });
+    model.traverse(part => {
+      part.castShadow = false;
+      part.receiveShadow = false;
+    });
+    previewModels.set(tool, model);
+    tray.add(model);
+  }
+  visibleGhost = previewModels.get(tool);
+  visibleGhost.position.set(world(x), pipeHeight + heightAt(index) * heightStep, world(z));
+  visibleGhost.rotation.y = -previewRotation * Math.PI / 2;
+  visibleGhost.visible = true;
+  positionMarkers(previewLights, x, z, tool, previewRotation, false);
+  previewMarkers.visible = true;
+}
+
+function rotatePreview() {
+  if (!drawerDiscovered || !Object.hasOwn(rotationCount, tool)) return;
+  previewRotation = (previewRotation + 1) % rotationCount[tool];
+  if (selection && highlight.visible) showPreview(...selection);
 }
 
 const highlight = new THREE.LineLoop(
@@ -1219,6 +1352,7 @@ let selection;
 
 function select(x, z) {
   selection = [x, z];
+  showPreview(x, z);
   const index = key(x, z);
   const allowed = editable(x, z) && (level.pipes.has(index) || canPlace(index, tool));
   highlight.position.set(world(x), heightAt(index) * heightStep, world(z));
@@ -1233,11 +1367,12 @@ function pick(event) {
   const fixtureHit = raycaster.intersectObjects(level.group.children)[0];
   const tileHit = raycaster.intersectObjects(tiles)[0];
   const boardHit = fixtureHit && (!tileHit || fixtureHit.distance < tileHit.distance) ? fixtureHit : tileHit;
-  const boxHit = raycaster.intersectObjects(caseParts.children)[0];
+  const boxHit = raycaster.intersectObjects(caseParts.children.filter(object => object.visible))[0];
   if (boxHit && (!boardHit || boxHit.distance < boardHit.distance)) {
     let object = boxHit.object;
     while (object !== caseParts) {
       if (object.userData.latch) return { latch: true };
+      if (object.userData.rewardLatch && rewardFraction > 0.65) return { rewardLatch: true };
       if (object.userData.tool && drawerOpen && drawerMotion > 0.82
           && !rackSlots.get(object.userData.tool).button.hidden) return { tool: object.userData.tool };
       object = object.parent;
@@ -1253,24 +1388,46 @@ function pick(event) {
 renderer.domElement.addEventListener('pointermove', event => {
   if (event.pointerType !== 'mouse') return;
   const hit = pick(event);
-  renderer.domElement.style.cursor = hit?.tool || hit?.latch ? 'pointer' : '';
+  renderer.domElement.style.cursor = hit?.tool || hit?.latch || hit?.rewardLatch ? 'pointer' : '';
   if (hit?.tile) select(...hit.tile);
-  else highlight.visible = false;
+  else {
+    highlight.visible = false;
+    hidePreview();
+  }
 });
 renderer.domElement.addEventListener('pointerleave', () => {
+  if (touchPreview !== null) return;
   highlight.visible = false;
+  hidePreview();
   renderer.domElement.style.cursor = '';
 });
 renderer.domElement.addEventListener('click', event => {
   const hit = pick(event);
   if (hit?.latch) toggleDrawer();
+  else if (hit?.rewardLatch) toggleReward();
   else if (hit?.tool) selectTool(hit.tool);
   else if (hit?.tile) {
-    act(...hit.tile);
-    select(...hit.tile);
+    const [x, z] = hit.tile;
+    const index = key(x, z);
+    if (event.pointerType === 'touch' && drawerDiscovered && editable(x, z)
+        && !level.pipes.has(index) && canPlace(index, tool) && touchPreview !== index) {
+      touchPreview = index;
+      select(x, z);
+      return;
+    }
+    touchPreview = null;
+    act(x, z);
+    select(x, z);
   }
 });
 stage.addEventListener('focus', () => select(...selection));
+stage.addEventListener('blur', event => {
+  if (event.relatedTarget === turnPiece) return;
+  touchPreview = null;
+  highlight.visible = false;
+  hidePreview();
+});
+turnPiece.addEventListener('click', rotatePreview);
 stage.addEventListener('keydown', event => {
   const moves = { ArrowRight: [1, 0], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowUp: [0, -1] };
   const move = moves[event.key];
@@ -1387,7 +1544,12 @@ function moveDrawer(dt) {
 function selectTool(type) {
   const slot = rackSlots.get(type);
   if (!slot || slot.button.hidden) return;
+  if (tool !== type) {
+    previewRotation = 0;
+    touchPreview = null;
+  }
   tool = type;
+  turnPiece.disabled = !drawerDiscovered || (rotationCount[type] ?? 1) <= 1;
   for (const [name, { button, cushion }] of rackSlots) {
     const selected = name === type;
     button.setAttribute('aria-pressed', String(selected));
@@ -1400,6 +1562,96 @@ function selectTool(type) {
 drawerLatch.addEventListener('click', toggleDrawer);
 for (const button of buttons) {
   button.addEventListener('click', () => selectTool(button.dataset.tool));
+}
+
+const milestones = new Map([
+  [0, { type: 'tee', label: 'Tee', board: 'Split Shift' }],
+  [3, { type: 'cross', label: 'Cross', board: 'Cross Pressure' }],
+  [5, { type: 'riser', label: 'Riser', board: 'First Rise' }],
+  [7, { type: 'riser-elbow', label: 'Riser elbow', board: 'Casting Yard' }],
+]);
+const rewardDrawer = new THREE.Group();
+rewardDrawer.visible = false;
+rewardDrawer.position.y = -1.51;
+caseParts.add(rewardDrawer);
+castBlock(rewardDrawer, frame, 1.24, 0.11, 1.27, 0, -0.008, 0, 0.035);
+castBlock(rewardDrawer, velvet, 1.11, 0.066, 1.12, 0, 0.061, 0, 0.021);
+castBlock(rewardDrawer, bronze, 0.145, 0.36, 1.13, 0.595, 0.13, 0, 0.029);
+const rewardPull = new THREE.Group();
+rewardPull.userData.rewardLatch = true;
+rewardPull.position.set(0.68, 0.145, 0);
+rewardDrawer.add(rewardPull);
+const rewardKnob = mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.078, 6), brass, rewardPull);
+rewardKnob.rotation.z = Math.PI / 2;
+const pearl = mesh(new THREE.SphereGeometry(0.057, 12, 8), enamelBlue, rewardPull, 0.044, 0, 0);
+pearl.scale.x = 0.40;
+const rewardModels = new Map();
+for (const { type } of milestones.values()) {
+  const model = new THREE.Group();
+  buildPipeModel(model, type, { body: riseByPort[type] ? rackCopper : rackSteel, collar: rackGold, rivet: bronze });
+  model.scale.setScalar(0.72);
+  const bounds = new THREE.Box3().setFromObject(model);
+  model.position.y = 0.094 - bounds.min.y;
+  model.visible = false;
+  rewardModels.set(type, model);
+  rewardDrawer.add(model);
+}
+let rewardOpen = false;
+let rewardFraction = 0;
+let activeMilestone = null;
+
+function setRewardDrawer(open) {
+  rewardOpen = open;
+  rewardLatch.setAttribute('aria-expanded', String(open));
+  rewardLatch.textContent = open ? 'Stow fitting' : 'Reveal fitting';
+}
+
+function toggleReward() {
+  if (!level.rewardShown) return;
+  setRewardDrawer(!rewardOpen);
+  playSound('latch');
+}
+
+rewardLatch.addEventListener('click', toggleReward);
+
+function showMilestone() {
+  level.rewardShown = true;
+  rewardPlate.hidden = false;
+  rewardLabel.textContent = `${activeMilestone.label} revealed · Used from ${activeMilestone.board}`;
+  setRewardDrawer(true);
+  playSound('latch');
+}
+
+function animateReward(elapsed) {
+  if (powered && level.completionTime < 1.65) {
+    level.completionTime += elapsed;
+    if (level.completionTime >= 1.65 && activeMilestone && !level.rewardShown) showMilestone();
+  }
+  const target = rewardOpen ? 1 : 0;
+  if (rewardFraction === target) return;
+  rewardFraction += Math.sign(target - rewardFraction)
+    * Math.min(elapsed * 1.82, Math.abs(target - rewardFraction));
+  const progress = rewardFraction * rewardFraction * (3 - 2 * rewardFraction);
+  const side = Math.sign(level.view[0]);
+  rewardDrawer.visible = rewardFraction > 0;
+  rewardDrawer.position.set(side * THREE.MathUtils.lerp(3.03, 4.22, progress), -1.51, 0.94);
+  rewardDrawer.rotation.y = side > 0 ? 0 : Math.PI;
+  rewardKnob.rotation.x = progress * Math.PI * 1.5;
+  resize();
+}
+
+function prepareMilestone(index) {
+  activeMilestone = milestones.get(index) ?? null;
+  rewardDrawer.visible = false;
+  rewardFraction = 0;
+  rewardPlate.hidden = !level.rewardShown;
+  for (const [type, model] of rewardModels) {
+    model.visible = type === activeMilestone?.type;
+  }
+  if (level.rewardShown) {
+    rewardLabel.textContent = `${activeMilestone.label} revealed · Used from ${activeMilestone.board}`;
+  }
+  setRewardDrawer(false);
 }
 
 const vapor = document.createElement('canvas');
@@ -1465,11 +1717,79 @@ function animateSteam(dt) {
   }
 }
 
-function animateMachine(dt) {
+let audio = null;
+let noiseBuffer = null;
+let muted = false;
+let nextChuff = 0;
+
+function enableSound(event) {
+  if (muted || (event && !event.isTrusted)) return;
+  if (!audio && window.AudioContext) {
+    audio = new AudioContext();
+    noiseBuffer = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.48), audio.sampleRate);
+    const noise = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+  }
+  if (audio?.state === 'suspended') audio.resume().catch(() => {});
+}
+
+window.addEventListener('pointerdown', enableSound);
+window.addEventListener('keydown', enableSound);
+soundButton.addEventListener('click', () => {
+  muted = !muted;
+  soundButton.setAttribute('aria-pressed', String(muted));
+  soundButton.textContent = muted ? 'Sound off' : 'Sound on';
+  if (!muted) enableSound();
+});
+
+function playSound(kind) {
+  if (muted || audio?.state !== 'running') return;
+  const now = audio.currentTime;
+  const gain = audio.createGain();
+  gain.connect(audio.destination);
+  if (kind === 'tap' || kind === 'latch') {
+    const tone = audio.createOscillator();
+    tone.type = 'triangle';
+    tone.frequency.setValueAtTime(kind === 'latch' ? 520 : 970, now);
+    tone.frequency.exponentialRampToValueAtTime(kind === 'latch' ? 185 : 430, now + 0.064);
+    gain.gain.setValueAtTime(kind === 'latch' ? 0.085 : 0.042, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.094);
+    tone.connect(gain);
+    tone.start(now);
+    tone.stop(now + 0.10);
+    return;
+  }
+  const puff = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const duration = kind === 'hiss' ? 0.44 : 0.15;
+  puff.buffer = noiseBuffer;
+  filter.type = 'bandpass';
+  filter.frequency.value = kind === 'hiss' ? 1720 : 235;
+  filter.Q.value = 0.85;
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.linearRampToValueAtTime(kind === 'hiss' ? 0.082 : 0.05, now + 0.035);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  puff.connect(filter).connect(gain);
+  puff.start(now);
+  puff.stop(now + duration);
+}
+
+function animateMachine(dt, elapsed) {
+  let running = false;
   for (const machine of level.machines.values()) {
-    machine.speed = THREE.MathUtils.damp(machine.speed, machine.powered ? 10 : 0, 4, dt);
+    if (machine.powered) machine.startup += elapsed;
+    const ramp = machine.powered ? THREE.MathUtils.smoothstep(machine.startup, 0.22, 1.75) : 0;
+    machine.speed = THREE.MathUtils.damp(machine.speed, ramp * 10, 4, dt);
     machine.phase += machine.speed * dt;
     machine.animate(machine.phase, machine.speed);
+    machine.lampMaterial.emissiveIntensity = machine.powered ? 0.36 + ramp * 1.44 : 0;
+    machine.lampLight.intensity = machine.powered ? 0.23 + ramp * 1.52 : 0;
+    running ||= machine.powered && machine.speed > 2;
+  }
+  nextChuff -= dt;
+  if (running && nextChuff <= 0) {
+    playSound('chuff');
+    nextChuff = 0.59;
   }
 }
 
@@ -1513,6 +1833,10 @@ const rackBounds = boxCorners({
   min: new THREE.Vector3(-3.55, -0.105, -0.76),
   max: new THREE.Vector3(3.55, 0.68, 0.91),
 });
+const rewardBounds = boxCorners({
+  min: new THREE.Vector3(-0.63, -0.06, -0.66),
+  max: new THREE.Vector3(0.79, 0.99, 0.66),
+});
 const cameraPoint = new THREE.Vector3();
 let turnStart = 0;
 let turnTarget = 0;
@@ -1554,6 +1878,10 @@ function resize() {
   fitCorners(level.fixtureBounds, tray.matrixWorld);
   fitCorners(caseBounds);
   fitCorners(rackBounds, drawer.matrixWorld);
+  if (rewardDrawer.visible) {
+    rewardDrawer.updateWorldMatrix(true, false);
+    fitCorners(rewardBounds, rewardDrawer.matrixWorld);
+  }
   const halfHeight = Math.max((top - bottom) / 1.72, (right - left) / (1.84 * aspect));
   camera.aspect = aspect;
   camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight));
@@ -1640,6 +1968,11 @@ heightGuide.addEventListener('change', updateHeightGuide);
 function clearSteamAndSelection() {
   selection = [level.source[0] + 1, Math.max(0, level.source[1] - 1)];
   highlight.visible = false;
+  previewRotation = 0;
+  touchPreview = null;
+  hidePreview();
+  snapMarkers.visible = false;
+  snapTime = 0;
   buttons[0].click();
   nextWisp = 0.84;
   for (const { sprite } of particles) sprite.visible = false;
@@ -1652,6 +1985,7 @@ function selectLevel(index) {
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
   level.group.visible = true;
+  prepareMilestone(index);
   viewTurns = 0;
   overhead = false;
   updateView();
@@ -1705,7 +2039,9 @@ renderer.setAnimationLoop(now => {
   previous = now;
   turnTray(Math.min(elapsed, 0.26));
   moveDrawer(Math.min(elapsed, 0.26));
-  animateMachine(dt);
+  animateReward(Math.min(elapsed, 0.26));
+  animateMachine(dt, elapsed);
+  animateSnap(dt);
   animateGauge(elapsed);
   animateSteam(dt);
   renderer.render(scene, camera);
