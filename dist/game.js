@@ -254,32 +254,62 @@ function bolts(parent, spread, height) {
 const floor = mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.25 }), scene, 0, -0.91, 0);
 floor.rotation.x = -Math.PI / 2;
 floor.castShadow = false;
-castBlock(tray, frame, 6.73, 0.49, 6.73, 0, -0.36, 0, 0.075);
-castBlock(tray, velvet, 6.65, 0.16, 6.65, 0, -0.125, 0, 0.042);
+const boxWidth = 7.24;
+const plinth = material(0x281a17, 0.17, 0.58);
+castBlock(tray, plinth, boxWidth + 0.13, 0.15, boxWidth + 0.13, 0, -0.71, 0, 0.046);
+castBlock(tray, frame, boxWidth, 0.59, boxWidth, 0, -0.37, 0, 0.066);
+castBlock(tray, velvet, 6.87, 0.16, 6.87, 0, -0.122, 0, 0.036);
+
+const filigree = new THREE.Shape();
+filigree.moveTo(0, -0.094);
+filigree.quadraticCurveTo(-0.024, -0.064, -0.017, -0.027);
+filigree.bezierCurveTo(-0.06, -0.103, -0.098, -0.002, -0.045, 0.014);
+filigree.quadraticCurveTo(-0.063, -0.031, -0.015, -0.002);
+filigree.bezierCurveTo(-0.026, 0.033, -0.019, 0.052, 0, 0.09);
+filigree.bezierCurveTo(0.019, 0.052, 0.026, 0.033, 0.015, -0.002);
+filigree.quadraticCurveTo(0.063, -0.031, 0.045, 0.014);
+filigree.bezierCurveTo(0.098, -0.002, 0.06, -0.103, 0.017, -0.027);
+filigree.quadraticCurveTo(0.024, -0.064, 0, -0.094);
+filigree.closePath();
+const crestGeometry = new THREE.ExtrudeGeometry(filigree, {
+  depth: 0.009, bevelEnabled: true, bevelSize: 0.003, bevelThickness: 0.003, bevelSegments: 1,
+});
+const lidHinge = new THREE.CylinderGeometry(0.048, 0.048, 0.17, 16);
+const inlay = material(0xc99755, 0.63, 0.34);
 for (let side = 0; side < 4; side++) {
   const rail = new THREE.Group();
   rail.rotation.y = side * Math.PI / 2;
   tray.add(rail);
-  castBlock(rail, frame, 6.7, 0.22, 0.26, 0, -0.13, 3.21, 0.048);
-  box(rail, brass, 5.97, 0.017, 0.031, 0, -0.014, 3.19);
-  box(rail, bronze, 5.85, 0.011, 0.018, 0, -0.281, 3.352);
-  for (const x of [-1.65, 1.65]) {
-    castBlock(rail, bronze, 0.36, 0.14, 0.06, x, -0.31, 3.353, 0.025);
-    mesh(rivetGeometry, brass, rail, x - 0.1, -0.31, 3.387);
-    mesh(rivetGeometry, brass, rail, x + 0.1, -0.31, 3.387);
+  castBlock(rail, frame, boxWidth, 0.30, 0.24, 0, -0.105, 3.496, 0.042);
+  castBlock(rail, velvet, 6.83, 0.085, 0.26, 0, -0.031, 3.238, 0.024);
+  for (const z of [3.39, 3.567]) {
+    box(rail, inlay, 6.83, 0.014, 0.020, 0, 0.048, z);
   }
-  const crest = new THREE.Group();
-  crest.position.set(0, -0.336, 3.366);
-  rail.add(crest);
-  mesh(new THREE.CircleGeometry(0.105, 24), brass, crest);
-  mesh(new THREE.CircleGeometry(0.079, 24), enamelBlue, crest, 0, 0, 0.002);
+  for (const y of [-0.265, -0.548]) {
+    box(rail, bronze, 6.98, 0.017, 0.018, 0, y, 3.627);
+  }
+  for (const x of [-1.35, 1.35]) {
+    castBlock(rail, brass, 0.37, 0.17, 0.049, x, -0.206, 3.636, 0.022);
+    const knuckle = mesh(lidHinge, bronze, rail, x, -0.121, 3.649);
+    knuckle.rotation.z = Math.PI / 2;
+    for (const dx of [-0.115, 0.115]) mesh(rivetGeometry, bronze, rail, x + dx, -0.22, 3.664);
+  }
+  const badge = new THREE.Group();
+  badge.position.set(0, -0.395, 3.635);
+  rail.add(badge);
+  const escutcheon = castBlock(badge, bronze, 0.36, 0.216, 0.046, 0, 0, 0, 0.018);
+  escutcheon.rotation.z = Math.PI / 4;
+  mesh(new THREE.CircleGeometry(0.142, 32), brass, badge, 0, 0, 0.027);
+  mesh(new THREE.CircleGeometry(0.119, 32), enamelBlue, badge, 0, 0, 0.030);
+  mesh(crestGeometry, inlay, badge, 0, 0.005, 0.034);
 }
-for (const x of [-3.19, 3.19]) {
-  for (const z of [-3.19, 3.19]) {
-    box(tray, frame, 0.48, 0.37, 0.48, x * 0.88, -0.69, z * 0.88);
-    box(tray, bronze, 0.54, 0.07, 0.54, x * 0.88, -0.86, z * 0.88);
-    castBlock(tray, bronze, 0.34, 0.15, 0.34, x, -0.039, z, 0.046).rotation.y = Math.PI / 4;
-    mesh(boltGeometry, brass, tray, x, 0.053, z);
+for (const x of [-3.49, 3.49]) {
+  for (const z of [-3.49, 3.49]) {
+    castBlock(tray, frame, 0.50, 0.17, 0.50, x * 0.86, -0.827, z * 0.86, 0.066);
+    castBlock(tray, bronze, 0.52, 0.052, 0.52, x * 0.86, -0.87, z * 0.86, 0.022);
+    castBlock(tray, brass, 0.34, 0.076, 0.34, x, 0.041, z, 0.028).rotation.y = Math.PI / 4;
+    const crest = mesh(crestGeometry, enamelBlue, tray, x, 0.082, z);
+    crest.rotation.set(-Math.PI / 2, 0, Math.atan2(x, z));
   }
 }
 
@@ -891,36 +921,41 @@ function heightAt(index) {
 function addPipe(x, z, type, rotation, fixed = false) {
   const group = atTile(x, z, level.group, heightAt(key(x, z)));
   group.position.y += pipeHeight;
+  const body = fixed ? fixedPipeFinish : riseByPort[type] ? riserFinish : iron;
+  const collars = buildPipeModel(group, type, { body, collar: brass, rivet: bronze }, fixed);
+  group.rotation.y = -rotation * Math.PI / 2;
+  level.pipes.set(key(x, z), { type, rotation, fixed, group, collars });
+}
+
+function buildPipeModel(group, type, finish, fixed = false) {
   const elevations = riseByPort[type];
-  const finish = fixed ? fixedPipeFinish : elevations ? riserFinish : iron;
+  const body = finish.body;
   if (bodies[type]) {
-    mesh(bodies[type], finish, group);
+    mesh(bodies[type], body, group);
   } else {
-    mesh(junctionHub, finish, group);
+    mesh(junctionHub, body, group);
     for (const port of pipePorts[type]) {
-      mesh(junctionArm, finish, group).rotation.y = -port * Math.PI / 2;
+      mesh(junctionArm, body, group).rotation.y = -port * Math.PI / 2;
     }
   }
   if (fixed) {
     const bracket = castBlock(group, bronze, 0.35, 0.065, 0.35, 0, -0.223, 0, 0.012);
     bolts(bracket, 0.132, 0.035);
   }
-  const collars = pipePorts[type].map((port, i) => {
+  return pipePorts[type].map((port, i) => {
     const [dx, dz] = directions[port];
     const flange = new THREE.Group();
     flange.position.set(dx * 0.451, (elevations?.[i] ?? 0) * heightStep, dz * 0.451);
     if (dx) flange.rotation.z = Math.PI / 2;
     else flange.rotation.x = Math.PI / 2;
     group.add(flange);
-    const collar = mesh(collarGeometry, brass, flange);
+    const collar = mesh(collarGeometry, finish.collar, flange);
     for (let i = 0; i < 4; i++) {
       const angle = (i + 0.5) * Math.PI / 2;
-      mesh(rivetGeometry, bronze, flange, Math.cos(angle) * 0.128, 0.025, Math.sin(angle) * 0.128);
+      mesh(rivetGeometry, finish.rivet, flange, Math.cos(angle) * 0.128, 0.025, Math.sin(angle) * 0.128);
     }
     return collar;
   });
-  group.rotation.y = -rotation * Math.PI / 2;
-  level.pipes.set(key(x, z), { type, rotation, fixed, group, collars });
 }
 
 function portsAt(index) {
@@ -1102,82 +1137,83 @@ stage.addEventListener('keydown', event => {
   }
 });
 
-const toolProfiles = {
-  straight: { points: [[9, 20], [63, 20]], fittings: [[10, 20, 0], [62, 20, 0]] },
-  elbow: { points: [[13, 29], [30, 29], [38, 23], [46, 11], [61, 11]], fittings: [[13, 29, 0], [61, 11, 0]] },
-  tee: { points: [[11, 15], [61, 15], [36, 15], [36, 33]], fittings: [[11, 15, 0], [61, 15, 0], [36, 33, 1]] },
-  cross: { points: [[11, 20], [61, 20], [36, 20], [36, 6], [36, 34]], fittings: [[11, 20, 0], [61, 20, 0], [36, 6, 1], [36, 34, 1]] },
-  riser: { points: [[10, 30], [24, 30], [34, 25], [42, 12], [62, 12]], fittings: [[10, 30, 0], [61, 12, 0]] },
-  'riser-elbow': { points: [[14, 31], [29, 31], [35, 26], [39, 12], [44, 8], [54, 8]], fittings: [[14, 31, 0], [54, 8, 0]] },
-};
+function buildPliers(parent, handle, steel, gilt) {
+  for (const side of [-1, 1]) {
+    const jaw = new THREE.Group();
+    jaw.rotation.y = side * 0.27;
+    parent.add(jaw);
+    castBlock(jaw, handle, 0.13, 0.09, 0.53, side * 0.025, 0, 0.29, 0.032);
+    castBlock(jaw, steel, 0.085, 0.052, 0.30, 0, 0, -0.036, 0.014);
+    const tooth = castBlock(jaw, steel, 0.093, 0.060, 0.14, -side * 0.032, 0, -0.23, 0.018);
+    tooth.rotation.y = side * 0.56;
+  }
+  cylinder(parent, gilt, 0.057, 0.056, 0, 0.035, 0);
+}
 
-function toolThumbnail(type) {
-  const icon = document.createElement('canvas');
-  icon.width = 144;
-  icon.height = 76;
-  icon.className = 'tool-thumbnail';
-  icon.setAttribute('aria-hidden', 'true');
-  const ctx = icon.getContext('2d');
-  ctx.scale(2, 2);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  if (type === 'remove') {
-    ctx.strokeStyle = '#ceac72';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(22, 30);
-    ctx.lineTo(44, 12);
-    ctx.lineTo(50, 5);
-    ctx.moveTo(31, 33);
-    ctx.lineTo(39, 13);
-    ctx.lineTo(35, 5);
-    ctx.stroke();
-    ctx.fillStyle = '#f3dcb1';
-    ctx.beginPath();
-    ctx.arc(40, 16, 2, 0, Math.PI * 2);
-    ctx.fill();
-    return icon;
+function renderToolThumbnails(buttons) {
+  const showcase = new THREE.Scene();
+  showcase.environment = reflection;
+  showcase.environmentIntensity = 1.85;
+  showcase.add(new THREE.HemisphereLight(0xe0edff, 0x9b6940, 2.1));
+  const keyLight = new THREE.DirectionalLight(0xffedcf, 4.1);
+  keyLight.position.set(-3, 5, 4);
+  showcase.add(keyLight);
+  const edgeLight = new THREE.DirectionalLight(0xb1c6ff, 2.5);
+  edgeLight.position.set(1, 3, -4);
+  showcase.add(edgeLight);
+
+  const steel = material(0x838b92, 0.79, 0.28);
+  const gold = material(0xeaba6c, 0.77, 0.25);
+  const copper = material(0xaf6b46, 0.71, 0.26);
+  const darkBrass = material(0x936337, 0.75, 0.34);
+  const handle = material(0x59303a, 0.19, 0.38);
+  const aspect = 1.62;
+  const camera = new THREE.OrthographicCamera(-aspect, aspect, 1, -1, 0.1, 16);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  renderer.setSize(174, 108, false);
+  for (const button of buttons) {
+    const type = button.dataset.tool;
+    const model = new THREE.Group();
+    showcase.add(model);
+    if (type === 'remove') {
+      buildPliers(model, handle, steel, gold);
+      model.rotation.y = -0.92;
+    } else {
+      buildPipeModel(model, type, { body: riseByPort[type] ? copper : steel, collar: gold, rivet: darkBrass });
+    }
+
+    const bounds = new THREE.Box3().setFromObject(model);
+    bounds.getCenter(center);
+    bounds.getSize(size);
+    const halfHeight = Math.max(0.40, Math.max(size.x, size.z) * 0.40 + size.y * 0.33);
+    camera.left = -halfHeight * aspect;
+    camera.right = halfHeight * aspect;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
+    camera.position.copy(center).add(new THREE.Vector3(1.7, 3.9, 4.3));
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+    renderer.render(showcase, camera);
+
+    const icon = document.createElement('canvas');
+    icon.width = renderer.domElement.width;
+    icon.height = renderer.domElement.height;
+    icon.className = 'tool-thumbnail';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.getContext('2d').drawImage(renderer.domElement, 0, 0);
+    const label = document.createElement('span');
+    label.className = 'tool-label';
+    label.textContent = button.textContent.trim();
+    button.replaceChildren(icon, label);
+    model.removeFromParent();
   }
-  const { points, fittings } = toolProfiles[type];
-  ctx.beginPath();
-  for (const [i, [x, y]] of points.entries()) {
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = '#120f0d';
-  ctx.lineWidth = 13;
-  ctx.stroke();
-  ctx.strokeStyle = type.startsWith('riser') ? '#946041' : '#696866';
-  ctx.lineWidth = 10;
-  ctx.stroke();
-  ctx.save();
-  ctx.translate(0, -1.4);
-  ctx.strokeStyle = '#fff3d282';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-  for (const [x, y, upright] of fittings) {
-    ctx.save();
-    ctx.translate(x, y);
-    if (upright) ctx.rotate(Math.PI / 2);
-    const gold = ctx.createLinearGradient(0, -6, 0, 6);
-    gold.addColorStop(0, '#b58446');
-    gold.addColorStop(0.28, '#ffdf98');
-    gold.addColorStop(0.65, '#b28447');
-    gold.addColorStop(1, '#5b3a25');
-    ctx.fillStyle = gold;
-    ctx.fillRect(-3.5, -6, 7, 12);
-    ctx.strokeStyle = '#ead19a';
-    ctx.lineWidth = 0.7;
-    ctx.strokeRect(-3.5, -6, 7, 12);
-    ctx.restore();
-  }
-  return icon;
+  for (const finish of [steel, gold, copper, darkBrass, handle]) finish.dispose();
 }
 
 const buttons = [...document.querySelectorAll('[data-tool]')];
+renderToolThumbnails(buttons);
 for (const button of buttons) {
-  button.prepend(toolThumbnail(button.dataset.tool));
   button.addEventListener('click', () => {
     if (button.hidden) return;
     tool = button.dataset.tool;
@@ -1286,8 +1322,8 @@ function boxCorners({ min, max }) {
 }
 
 const boardBounds = boxCorners({
-  min: new THREE.Vector3(-3.4, -0.91, -3.4),
-  max: new THREE.Vector3(3.4, 0.04, 3.4),
+  min: new THREE.Vector3(-3.7, -0.91, -3.7),
+  max: new THREE.Vector3(3.7, 0.08, 3.7),
 });
 const cameraPoint = new THREE.Vector3();
 let turnStart = 0;
