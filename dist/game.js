@@ -81,6 +81,12 @@ const levels = [
       { position: [5, 5], build: buildPress },
     ],
   },
+  {
+    name: 'First fitting', tutorial: true, view: [42, 50], source: [0, 4], destination: [5, 1],
+    machineName: 'Flywheel', action: 'spinning', build: buildFlywheel, obstacles: [[3, 2], [3, 4]],
+    fixed: [[2, 3, 'straight', 1], [2, 2, 'straight', 1],
+      [2, 1, 'elbow', 0], [3, 1, 'straight', 0], [4, 1, 'straight', 0]],
+  },
 ];
 function wallColumn(x, height) {
   return Array.from({ length: size }, (_, z) => [x, z, height, 'wall']);
@@ -102,6 +108,7 @@ const heightStep = 0.68;
 const maxHeight = 2;
 const stage = document.querySelector('#stage');
 const giftCase = document.querySelector('.gift-case');
+const openBoxButton = document.querySelector('#open-box');
 const drawerLatch = document.querySelector('#drawer-latch');
 const drawerPanel = document.querySelector('#drawer-panel');
 const drawerLabel = document.querySelector('#drawer-label');
@@ -1270,6 +1277,7 @@ function editable(x, z) {
 }
 
 function act(x, z, action = tool) {
+  if (coverState !== 'open') return;
   if (!drawerDiscovered) {
     drawerLatch.focus();
     return;
@@ -1429,6 +1437,11 @@ function pick(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.set(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height);
   raycaster.setFromCamera(pointer, camera);
+  if (coverState !== 'open') {
+    if (coverState === 'opening') return null;
+    const target = coverState === 'locked' ? coverLock : coverHinge;
+    return raycaster.intersectObject(target).length ? { cover: true } : null;
+  }
   const fixtureHit = inspectingLid ? null : raycaster.intersectObjects(level.group.children)[0];
   const tileHit = inspectingLid ? null : raycaster.intersectObjects(tiles)[0];
   const boardHit = fixtureHit && (!tileHit || fixtureHit.distance < tileHit.distance) ? fixtureHit : tileHit;
@@ -1458,7 +1471,7 @@ renderer.domElement.addEventListener('pointermove', event => {
   if (event.pointerType !== 'mouse') return;
   const hit = pick(event);
   hoveredControl = hit?.control ?? null;
-  renderer.domElement.style.cursor = hit?.tool || hit?.latch || hit?.rewardLatch || hit?.control ? 'pointer' : '';
+  renderer.domElement.style.cursor = hit?.tool || hit?.latch || hit?.rewardLatch || hit?.control || hit?.cover ? 'pointer' : '';
   if (hit?.tile) select(...hit.tile);
   else {
     highlight.visible = false;
@@ -1474,7 +1487,8 @@ renderer.domElement.addEventListener('pointerleave', () => {
 });
 renderer.domElement.addEventListener('click', event => {
   const hit = pick(event);
-  if (hit?.control) {
+  if (hit?.cover) advanceCover();
+  else if (hit?.control) {
     touchPreview = null;
     highlight.visible = false;
     hidePreview();
@@ -1497,7 +1511,7 @@ renderer.domElement.addEventListener('click', event => {
     select(x, z);
   }
 });
-stage.addEventListener('focus', () => { if (!inspectingLid) select(...selection); });
+stage.addEventListener('focus', () => { if (!inspectingLid && coverState === 'open') select(...selection); });
 stage.addEventListener('blur', event => {
   if (event.relatedTarget === turnPiece) return;
   touchPreview = null;
@@ -1506,6 +1520,13 @@ stage.addEventListener('blur', event => {
 });
 turnPiece.addEventListener('click', rotatePreview);
 stage.addEventListener('keydown', event => {
+  if (coverState !== 'open') {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      advanceCover();
+    }
+    return;
+  }
   if (inspectingLid) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -1610,6 +1631,7 @@ for (const [index, button] of buttons.entries()) {
 
 let drawerMotion = 0;
 function toggleDrawer() {
+  if (coverState !== 'open') return;
   const focusWasInRack = drawerPanel.contains(document.activeElement);
   drawerOpen = !drawerOpen;
   drawerDiscovered ||= drawerOpen;
@@ -1636,7 +1658,7 @@ function selectTool(type) {
   const slot = rackSlots.get(type);
   if (!slot || slot.button.hidden) return;
   if (tool !== type) {
-    previewRotation = 0;
+    previewRotation = level.tutorial && type === 'elbow' ? 2 : 0;
     touchPreview = null;
   }
   tool = type;
@@ -1967,10 +1989,14 @@ function resize() {
       top = Math.max(top, y);
     }
   };
-  fitCorners(lidBounds);
+  if (lid.visible) fitCorners(lidBounds);
+  if (coverHinge.visible && !inspectingLid) {
+    coverHinge.updateMatrixWorld();
+    for (const leaf of coverLeaves) fitCorners(coverBounds, leaf.matrixWorld);
+  }
   if (!inspectingLid) {
     fitCorners(boardBounds, tray.matrixWorld);
-    fitCorners(level.fixtureBounds, tray.matrixWorld);
+    if (level.group.visible) fitCorners(level.fixtureBounds, tray.matrixWorld);
     fitCorners(caseBounds);
     fitCorners(rackBounds, drawer.matrixWorld);
     if (rewardDrawer.visible) {
@@ -2046,10 +2072,19 @@ function readProgress() {
       rewardShown: entry.solved === true && entry.rewardShown === true,
     }]];
   }));
-  return { board: saved?.board, drawerDiscovered: saved?.drawerDiscovered === true, boards: knownBoards };
+  return {
+    board: saved?.board,
+    opened: saved?.opened === true || (saved?.opened === undefined &&
+      levels.some(({ name, tutorial }) => !tutorial && name === saved?.board)),
+    drawerDiscovered: saved?.drawerDiscovered === true,
+    boards: knownBoards,
+  };
 }
 
 const progress = readProgress();
+const tutorialIndex = levels.findIndex(board => board.tutorial);
+const scoredBoards = levels.length - 1;
+let coverState = progress.opened ? 'open' : 'locked';
 const levelSelect = document.querySelector('#level');
 const ledgerCount = document.querySelector('#ledger-count');
 const boardOptions = [...levelSelect.options].map(option => ({ option, label: option.textContent.trim() }));
@@ -2058,11 +2093,11 @@ function updateLedger() {
   let solved = 0;
   for (const { option, label } of boardOptions) {
     const complete = progress.boards[levels[Number(option.value)].name]?.solved;
-    solved += complete ? 1 : 0;
+    if (complete && !levels[Number(option.value)].tutorial) solved++;
     const title = complete ? `✓ ${label}` : label;
     if (option.textContent !== title) option.textContent = title;
   }
-  const count = `${solved} / ${levels.length} solved`;
+  const count = `${solved} / ${scoredBoards} solved`;
   if (ledgerCount.textContent !== count) ledgerCount.textContent = count;
 }
 
@@ -2146,13 +2181,17 @@ function clearSteamAndSelection() {
 }
 
 function selectLevel(index) {
+  if (coverState !== 'open' && index !== tutorialIndex) {
+    levelSelect.value = String(tutorialIndex);
+    return;
+  }
   if (level) level.group.visible = false;
   tray.rotation.y = 0;
   tray.updateMatrixWorld();
   const firstVisit = !boards[index];
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
-  level.group.visible = true;
+  level.group.visible = coverState === 'open';
   viewTurns = 0;
   overhead = false;
   const advanced = level.machines.size > 1;
@@ -2161,7 +2200,9 @@ function selectLevel(index) {
   document.querySelector('#receiver-name').textContent = advanced ? 'Machines' : machineName;
   document.querySelector('#fixed-legend').hidden = !advanced && !raised;
   const goal = document.querySelector('#goal');
-  if (raised) {
+  if (level.tutorial) {
+    goal.textContent = 'Pull out the pipe rack, pick up the elbow, and fit it into the gold-marked gap.';
+  } else if (raised) {
     goal.textContent = advanced
       ? 'Feed both machines across three heights. Seal every branch.'
       : 'Place the riser on the lower tile. Turn its high end toward the raised deck.';
@@ -2202,8 +2243,9 @@ document.querySelector('#reset').addEventListener('click', () => {
 drawerDiscovered = progress.drawerDiscovered;
 if (drawerDiscovered) drawerLabel.textContent = 'Open pipe rack';
 const savedIndex = levels.findIndex(({ name }) => name === progress.board);
-if (savedIndex !== -1) levelSelect.value = String(savedIndex);
+levelSelect.value = String(progress.opened && savedIndex !== -1 ? savedIndex : tutorialIndex);
 const lid = new THREE.Group();
+lid.visible = coverState === 'open';
 lid.position.set(0, 0.77, -4.31);
 lid.rotation.x = -0.66;
 caseParts.add(lid);
@@ -2255,6 +2297,133 @@ function engraving(parent, width, height, x, y, z, options = {}) {
   };
 }
 
+const coverHinge = new THREE.Group();
+coverHinge.position.set(0, 0.10, -3.73);
+scene.add(coverHinge);
+const leafLength = 2.473;
+const coverLeaves = [coverHinge, new THREE.Group(), new THREE.Group()];
+for (let i = 1; i < coverLeaves.length; i++) {
+  const parent = coverLeaves[i - 1];
+  const leaf = coverLeaves[i];
+  leaf.position.z = leafLength;
+  parent.add(leaf);
+}
+for (const [i, leaf] of coverLeaves.entries()) {
+  const middle = leafLength / 2;
+  castBlock(leaf, frame, 7.45, 0.139, leafLength - 0.020, 0, 0, middle, 0.036);
+  for (const x of [-3.49, 3.49]) {
+    box(leaf, inlay, 0.020, 0.012, leafLength - 0.052, x, 0.073, middle);
+  }
+  for (const x of [-2.52, 2.52]) {
+    const hinge = cylinder(leaf, bronze, 0.053, 0.36, x, 0.067, 0.027, 'x');
+    hinge.castShadow = false;
+  }
+  if (i === 0 || i === 2) {
+    const z = i === 0 ? 0.125 : leafLength - 0.125;
+    box(leaf, inlay, 6.99, 0.012, 0.022, 0, 0.073, z);
+    for (const x of [-3.40, 3.40]) {
+      const corner = mesh(crestGeometry, inlay, leaf, x, 0.082, z);
+      corner.rotation.x = -Math.PI / 2;
+      corner.scale.setScalar(1.13);
+    }
+  }
+}
+const coverCartouche = new THREE.Group();
+coverCartouche.position.set(0, 0.097, 1.17);
+coverCartouche.rotation.x = -Math.PI / 2;
+coverLeaves[1].add(coverCartouche);
+castBlock(coverCartouche, bronze, 3.15, 0.79, 0.035, 0, 0, 0.012, 0.013);
+castBlock(coverCartouche, enamelBlue, 3.05, 0.69, 0.032, 0, 0, 0.035, 0.011);
+mesh(crestGeometry, brass, coverCartouche, -1.20, 0, 0.056).scale.setScalar(1.25);
+engraving(coverCartouche, 2.40, 0.48, 0.15, 0, 0.055, { italic: true })('Steam Tycoon');
+const coverLock = new THREE.Group();
+coverLock.position.set(0, 0.113, 2.16);
+coverLock.rotation.x = -Math.PI / 2;
+coverLeaves[2].add(coverLock);
+castBlock(coverLock, bronze, 1.92, 0.341, 0.063, 0.06, 0, 0, 0.025);
+castBlock(coverLock, brass, 1.81, 0.284, 0.042, 0.06, 0, 0.039, 0.016);
+const coverKnob = new THREE.Group();
+coverKnob.position.set(-0.632, 0, 0.069);
+coverLock.add(coverKnob);
+cylinder(coverKnob, bronze, 0.112, 0.055, 0, 0, 0, 'z');
+castBlock(coverKnob, brass, 0.156, 0.051, 0.032, 0, 0, 0.04, 0.014);
+const coverHint = engraving(coverLock, 1.22, 0.202, 0.211, 0, 0.064, { color: '#2c2018' });
+const coverBounds = boxCorners({
+  min: new THREE.Vector3(-3.75, -0.076, -0.020),
+  max: new THREE.Vector3(3.75, 0.28, leafLength + 0.025),
+});
+let unfolding = coverState === 'open' ? 1 : 0;
+const boardHelp = stage.getAttribute('aria-label');
+
+function poseCover() {
+  const rear = THREE.MathUtils.smoothstep(unfolding, 0, 0.94);
+  const fold = THREE.MathUtils.smoothstep(unfolding, 0.13, 1);
+  const tuck = THREE.MathUtils.smoothstep(unfolding, 0.69, 1);
+  coverHinge.position.set(0, 0.10 - 0.36 * tuck, -3.73 - 0.79 * tuck);
+  coverLeaves[0].rotation.x = -2.69 * rear;
+  coverLeaves[1].rotation.x = 3.01 * fold;
+  coverLeaves[2].rotation.x = -3.03 * fold;
+  coverKnob.rotation.z = coverState === 'locked' ? 0 : Math.PI / 2;
+}
+
+function updateOpeningHint() {
+  const locked = coverState === 'locked';
+  coverHint(locked ? 'Turn clasp' : 'Lift lid');
+  openBoxButton.textContent = locked ? 'Turn clasp' : 'Lift lid';
+  openBoxButton.disabled = coverState === 'opening';
+  openBoxButton.hidden = coverState === 'open';
+  stage.setAttribute('aria-label', coverState === 'open' ? boardHelp
+    : locked ? 'Closed gift box. Click the clasp or press Enter to turn it.'
+      : 'Gift box unlatched. Click the lid or press Enter to lift it.');
+}
+
+function advanceCover() {
+  if (coverState === 'locked') {
+    coverState = 'unlatched';
+    playSound('latch');
+    poseCover();
+  } else if (coverState === 'unlatched') {
+    coverState = 'opening';
+    playSound('latch');
+  }
+  updateOpeningHint();
+}
+
+openBoxButton.addEventListener('click', advanceCover);
+poseCover();
+updateOpeningHint();
+
+function animateCover(elapsed) {
+  if (coverState !== 'opening') return;
+  unfolding = Math.min(1, unfolding + elapsed * 0.89);
+  poseCover();
+  if (unfolding >= 0.65) level.group.visible = true;
+  if (unfolding >= 0.82) lid.visible = true;
+  if (unfolding === 1) {
+    coverState = 'open';
+    progress.opened = true;
+    recordProgress();
+    updateOpeningHint();
+  }
+  resize();
+}
+
+const tutorialMarker = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints([
+    [-0.39, -0.39], [0.39, -0.39], [0.39, 0.39], [-0.39, 0.39],
+  ].map(([x, z]) => new THREE.Vector3(x, 0, z))),
+  new THREE.LineBasicMaterial({ color: 0xf2b952, toneMapped: false }),
+);
+tutorialMarker.position.set(world(2), 0.018, world(4));
+const tutorialWash = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.78), new THREE.MeshBasicMaterial({
+  color: 0xecac50, transparent: true, opacity: 0.23, depthWrite: false, toneMapped: false,
+}));
+tutorialWash.rotation.x = -Math.PI / 2;
+tutorialWash.position.y = -0.008;
+tutorialMarker.add(tutorialWash);
+tutorialMarker.visible = false;
+tray.add(tutorialMarker);
+
 const titleStamp = engraving(lid, 2.09, 0.38, -2.42, 0.57, 0.105, { italic: true });
 titleStamp('Steam Tycoon');
 mesh(crestGeometry, inlay, lid, -3.19, 0.135, 0.107).scale.setScalar(1.18);
@@ -2299,9 +2468,9 @@ function castKey(x, y, width, label, invoke, disabled = () => false, pressed = (
 }
 
 function moveBoard(amount) {
-  const next = Number(levelSelect.value) + amount;
-  if (next < 0 || next >= levels.length) return;
-  levelSelect.value = String(next);
+  const next = levelSelect.selectedIndex + amount;
+  if (next < 0 || next >= levelSelect.options.length) return;
+  levelSelect.selectedIndex = next;
   levelSelect.dispatchEvent(new Event('change'));
 }
 
@@ -2315,8 +2484,8 @@ function toggleLidInspection() {
   resize();
 }
 castKey(-2.35, 0.13, 1.01, () => inspectingLid ? 'Return' : 'Inspect lid', toggleLidInspection);
-castKey(-1.40, 0.57, 0.43, () => '‹', () => moveBoard(-1), () => Number(levelSelect.value) === 0);
-castKey(1.84, 0.57, 0.43, () => '›', () => moveBoard(1), () => Number(levelSelect.value) === levels.length - 1);
+castKey(-1.40, 0.57, 0.43, () => '‹', () => moveBoard(-1), () => levelSelect.selectedIndex === 0);
+castKey(1.84, 0.57, 0.43, () => '›', () => moveBoard(1), () => levelSelect.selectedIndex === levelSelect.options.length - 1);
 
 function cycleHeight() {
   const allowed = [...heightGuide.options].filter(option => !option.disabled);
@@ -2350,11 +2519,20 @@ const lidBounds = boxCorners(new THREE.Box3().setFromObject(lid));
 
 function updateCaseLid() {
   const number = Number(levelSelect.value) + 1;
-  boardStamp(`${level.solved ? "✓ " : ""}${number} · ${level.name}`);
+  const boardTitle = level.tutorial ? level.name : `${number} · ${level.name}`;
+  boardStamp(`${level.solved ? '✓ ' : ''}${boardTitle}`);
   ledgerStamp(ledgerCount.textContent);
   pressureStamp(`Pressure ${pressureReadout.textContent}`);
   inHandStamp(drawerDiscovered ? `In hand · ${selectedTool.textContent}` : 'Release the pipe rack');
-  statusStamp(rewardOpen ? rewardLabel.textContent : status.textContent);
+  let readout = rewardOpen ? rewardLabel.textContent : status.textContent;
+  if (level.tutorial) {
+    if (powered) readout = 'First fitting complete · Next board ›';
+    else if (!drawerOpen && tool !== 'elbow') readout = 'Pull the brass ring to open the rack';
+    else if (tool !== 'elbow') readout = 'Pick up the elbow from the rack';
+    else readout = 'Fit it into the gold-marked gap';
+  }
+  tutorialMarker.visible = coverState === 'open' && level.tutorial && !level.pipes.has(key(2, 4));
+  statusStamp(readout);
   ledgerMark.material = powered ? collarActive : bronze;
   for (const control of lidControls) {
     const { keyTop, label, write, disabled, pressed } = control;
@@ -2375,10 +2553,11 @@ renderer.setAnimationLoop(now => {
   turnTray(Math.min(elapsed, 0.26));
   moveDrawer(Math.min(elapsed, 0.26));
   animateReward(Math.min(elapsed, 0.26));
+  animateCover(Math.min(elapsed, 0.26));
   animateMachine(dt, elapsed);
   animateSnap(dt);
   animateGauge(elapsed);
   updateCaseLid();
-  animateSteam(dt);
+  if (coverState === 'open') animateSteam(dt);
   renderer.render(scene, camera);
 });
