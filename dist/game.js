@@ -2025,6 +2025,7 @@ function updateFlow(celebrate = true) {
     if (wasComplete) stopCelebration();
   } else if (!wasComplete) {
     for (const { sprite } of particles) sprite.visible = false;
+    nextWisp = 0.84;
     if (celebrate && !level.celebrated) startCelebration(depth);
   }
   const supply = supplied / level.machines.size;
@@ -2033,7 +2034,7 @@ function updateFlow(celebrate = true) {
   pressureReadout.textContent = `${level.targetPressure}%`;
   // Working exhausts are atmospheric only. A sealed board visibly settles.
   outlets = powered ? [] : [...leaks, ...exhausts];
-  warmJoints = powered ? [] : joints;
+  warmJoints = joints;
   for (const [index, pipe] of level.pipes) {
     for (const collar of pipe.collars) collar.material = depth.has(index) ? collarActive : brass;
   }
@@ -2853,7 +2854,8 @@ function animateSteam(dt, elapsed) {
       if (isJet ? jetReady : ventReady) emitSteam(outlet, isJet ? 'jet' : 'vent');
     }
   }
-  if (warmJoints.length) {
+  // Leave the board clear for the completion glints, then let sealed joints breathe again.
+  if (warmJoints.length && !celebration && (!powered || level.completionTime >= 1.65)) {
     nextWisp -= dt;
     if (nextWisp <= 0) {
       nextWisp = 0.85 + Math.random() * 1.5;
