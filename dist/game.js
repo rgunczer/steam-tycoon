@@ -1209,26 +1209,34 @@ function buildBeamPump(machine) {
 
 function buildGovernor(machine) {
   castBlock(machine, machineryRed, 0.74, 0.24, 0.63, 0, 0.29, 0, 0.044);
-  cylinder(machine, castSteel, 0.095, 0.96, 0, 0.82, -0.23);
-  cylinder(machine, brass, 0.105, 0.055, 0, 1.32, -0.23);
-  cylinder(machine, bronze, 0.065, 0.27, 0, 1.27, -0.115, 'z');
+  // Support the rotating shaft from below, clear of the flyweights' entire sweep.
+  const bearing = cylinder(machine, castSteel, 0.107, 0.225, 0, 0.565, 0);
+  cylinder(machine, brass, 0.119, 0.046, 0, 0.665, 0);
+  mesh(new THREE.TorusGeometry(0.085, 0.009, 8, 24), bronze, bearing, 0, 0.072, 0)
+    .rotation.x = Math.PI / 2;
+
   const spindle = new THREE.Group();
   spindle.position.y = 1.27;
   machine.add(spindle);
-  cylinder(spindle, bronze, 0.041, 0.60, 0, -0.24, 0);
+  cylinder(spindle, bronze, 0.041, 0.67, 0, -0.31, 0);
+  castBlock(spindle, bronze, 0.226, 0.078, 0.095, 0, 0, 0, 0.022);
+  cylinder(spindle, brass, 0.073, 0.050, 0, 0.053, 0);
   const sleeve = cylinder(spindle, brass, 0.089, 0.128, 0, -0.36, 0);
   const arms = [-1, 1].map(sign => {
+    const pivot = sign * 0.078;
     const arm = new THREE.Group();
+    arm.position.x = pivot;
     spindle.add(arm);
-    cylinder(arm, brass, 0.024, 0.44, 0, -0.21, 0);
-    mesh(new THREE.SphereGeometry(0.105, 14, 9), bronze, arm, 0, -0.43, 0);
-    const link = cylinder(spindle, castSteel, 0.019, 1, 0, -0.35, 0);
+    cylinder(spindle, brass, 0.026, 0.112, pivot, 0, 0, 'z');
+    cylinder(arm, brass, 0.024, 0.40, 0, -0.18, 0);
+    mesh(new THREE.SphereGeometry(0.094, 20, 12), bronze, arm, 0, -0.39, 0);
+    const link = cylinder(spindle, castSteel, 0.017, 1, 0, -0.35, 0);
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
     return spread => {
       arm.rotation.z = sign * spread;
-      a.set(sign * Math.sin(spread) * 0.34, -Math.cos(spread) * 0.34, 0);
-      b.set(0, sleeve.position.y, 0);
+      a.set(pivot + sign * Math.sin(spread) * 0.29, -Math.cos(spread) * 0.29, 0);
+      b.set(sign * 0.081, sleeve.position.y, 0);
       positionRod(link, a, b);
     };
   });
