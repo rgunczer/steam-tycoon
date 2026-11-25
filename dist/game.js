@@ -3693,7 +3693,7 @@ tutorialMarker.visible = false;
 tray.add(tutorialMarker);
 
 const titleHeight = 1.20;
-const titleStamp = engraving(lid, 3.7, 0.50, 0, titleHeight, 0.181, { italic: true, fontScale: 0.83 });
+const titleStamp = engraving(lid, 3.7, 0.50, 0, titleHeight, 0.181, { italic: true, fontScale: 0.77 });
 titleStamp('Steam Tycoon');
 const inHandStamp = engraving(lid, 1.85, 0.20, -2.33, 0.23, 0.127);
 const ivoryPlate = material(0xdab684, 0.22, 0.48);
@@ -3760,55 +3760,67 @@ mesh(cartoucheFace(4.15, 0.49, 0.010), enamelBlue, lid, 0, titleHeight, 0.151);
 function decorateTitle() {
   // Cast sun and mirrored laurel sprays sit proud of the velvet and catch the light when the box turns.
   const sun = new THREE.Group();
-  sun.position.set(0, 1.674, 0.117);
+  sun.position.set(0, 1.722, 0.133);
   lid.add(sun);
-  const ray = new THREE.Shape().moveTo(0, -0.030)
-    .quadraticCurveTo(0.46, -0.017, 1, 0)
-    .quadraticCurveTo(0.46, 0.017, 0, 0.030).closePath();
+
+  // A short crown of fluted rays, with a wider sweep toward the shoulders of the plaque.
+  const ray = new THREE.Shape().moveTo(0, -0.020)
+    .bezierCurveTo(0.37, -0.049, 0.73, -0.032, 0.96, -0.007)
+    .quadraticCurveTo(1.01, 0.004, 0.96, 0.014)
+    .bezierCurveTo(0.70, 0.042, 0.28, 0.031, 0, 0.014).closePath();
   const rayGeometry = new THREE.ExtrudeGeometry(ray, {
-    depth: 0.009, bevelSize: 0.006, bevelThickness: 0.008, bevelSegments: 2,
+    depth: 0.009, bevelSize: 0.009, bevelThickness: 0.012, bevelSegments: 3, curveSegments: 10,
   });
-  const rayCount = 32;
+  const rayCount = 20;
   for (let i = 0; i < rayCount; i++) {
     const angle = i * Math.PI * 2 / rayCount;
-    const length = 1 / Math.hypot(Math.cos(angle) / 1.53, Math.sin(angle) / 0.326);
-    const radius = 0.115;
-    const flare = mesh(rayGeometry, i % 2 === 0 ? keyRim : inlay, sun,
-      Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
-    flare.scale.x = (length - radius) * (i % 2 === 0 ? 1 : 0.77);
+    const radius = 0.171;
+    const rim = 1 / Math.hypot(Math.cos(angle) / 0.69, Math.sin(angle) / 0.27);
+    const flare = mesh(rayGeometry, keyRim, sun, Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+    flare.scale.set((rim - radius) * (i % 2 === 0 ? 1 : 0.78), 1, 1);
     flare.rotation.z = angle;
   }
-  cylinder(sun, bronze, 0.179, 0.041, 0, 0, 0.018, 'z');
-  mesh(new THREE.TorusGeometry(0.166, 0.013, 8, 36), keyRim, sun, 0, 0, 0.046);
-  const relief = new THREE.SphereGeometry(1, 20, 12);
-  const castDetail = (finish, x, y, z, width, height, depth) =>
-    mesh(relief, finish, sun, x, y, z).scale.set(width, height, depth);
-  castDetail(keyRim, 0, -0.006, 0.049, 0.111, 0.135, 0.049);
-  for (const side of [-1, 1]) {
-    castDetail(brass, side * 0.064, -0.018, 0.088, 0.039, 0.038, 0.017);
-    castDetail(bronze, side * 0.040, 0.026, 0.099, 0.029, 0.009, 0.008);
-    castDetail(keyRim, side * 0.041, 0.041, 0.099, 0.034, 0.011, 0.010);
+
+  // A classical profile in coin relief gives the medallion one continuous silhouette.
+  cylinder(sun, bronze, 0.194, 0.038, 0, 0, 0.016, 'z');
+  cylinder(sun, inlay, 0.174, 0.017, 0, 0, 0.037, 'z');
+  mesh(new THREE.TorusGeometry(0.180, 0.010, 10, 48), keyRim, sun, 0, 0, 0.045);
+  const profile = new THREE.Shape().moveTo(-0.10, -0.098)
+    .quadraticCurveTo(-0.047, -0.073, -0.056, -0.024)
+    .bezierCurveTo(-0.111, 0.021, -0.089, 0.113, -0.025, 0.127)
+    .bezierCurveTo(0.014, 0.134, 0.048, 0.106, 0.049, 0.067)
+    .quadraticCurveTo(0.053, 0.039, 0.077, 0.018)
+    .quadraticCurveTo(0.087, 0.004, 0.059, -0.001)
+    .lineTo(0.063, -0.018).lineTo(0.056, -0.029)
+    .quadraticCurveTo(0.067, -0.057, 0.036, -0.063)
+    .quadraticCurveTo(0.008, -0.063, 0.014, -0.091)
+    .quadraticCurveTo(0.037, -0.109, 0.075, -0.113)
+    .quadraticCurveTo(0.025, -0.145, -0.10, -0.098).closePath();
+  const profileGeometry = new THREE.ExtrudeGeometry(profile, {
+    depth: 0.012, bevelSize: 0.008, bevelThickness: 0.013, bevelSegments: 4, curveSegments: 14,
+  });
+  mesh(profileGeometry, keyRim, sun, 0, 0, 0.054);
+  function chaseLine(from, through, to, radius) {
+    const curve = new THREE.QuadraticBezierCurve3(...[from, through, to].map(
+      ([x, y]) => new THREE.Vector3(x, y, 0.078),
+    ));
+    mesh(new THREE.TubeGeometry(curve, 12, radius, 6), bronze, sun);
   }
-  castDetail(brass, 0, -0.005, 0.101, 0.017, 0.037, 0.020);
-  castDetail(bronze, 0, -0.056, 0.093, 0.030, 0.008, 0.008);
-  for (let i = 0; i < 12; i++) {
-    const angle = Math.PI * 2 * i / 12;
-    const curl = mesh(relief, brass, sun, 0.116 * Math.cos(angle), 0.126 * Math.sin(angle), 0.064);
-    curl.rotation.z = angle + 0.56;
-    curl.scale.set(0.034, 0.020, 0.027);
-  }
+  chaseLine([0.024, 0.046], [0.035, 0.051], [0.046, 0.044], 0.0036);
+  chaseLine([-0.071, 0.038], [-0.052, 0.091], [0.028, 0.096], 0.0046);
+  chaseLine([-0.064, 0.015], [-0.049, 0.066], [0.006, 0.077], 0.0039);
 
   const leafShape = new THREE.Shape().moveTo(0, 0)
-    .quadraticCurveTo(0.118, 0.108, 0.28, 0.015)
-    .quadraticCurveTo(0.133, -0.062, 0, 0).closePath();
+    .bezierCurveTo(0.055, 0.065, 0.172, 0.078, 0.265, 0.016)
+    .bezierCurveTo(0.17, 0.005, 0.097, -0.057, 0, 0).closePath();
   const leafGeometry = new THREE.ExtrudeGeometry(leafShape, {
-    depth: 0.012, bevelSize: 0.011, bevelThickness: 0.009, bevelSegments: 2, curveSegments: 8,
+    depth: 0.008, bevelSize: 0.013, bevelThickness: 0.016, bevelSegments: 4, curveSegments: 10,
   });
   const leafVein = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(0.025, 0.004, 0.023),
-    new THREE.Vector3(0.130, 0.023, 0.023),
-    new THREE.Vector3(0.252, 0.016, 0.023),
-  ), 12, 0.0035, 6);
+    new THREE.Vector3(0.020, 0.002, 0.023),
+    new THREE.Vector3(0.120, 0.015, 0.027),
+    new THREE.Vector3(0.221, 0.019, 0.022),
+  ), 12, 0.0031, 6);
   const stemPoint = (x, y) => new THREE.Vector3(x, y, 0);
   const stem = new THREE.CurvePath();
   stem.add(new THREE.CubicBezierCurve3(stemPoint(0.10, 0.46), stemPoint(0.35, 0.42),
@@ -3835,7 +3847,7 @@ function decorateTitle() {
       leaf.scale.setScalar(scale);
       spray.add(leaf);
       mesh(leafGeometry, keyRim, leaf);
-      mesh(leafVein, bronze, leaf);
+      mesh(leafVein, inlay, leaf);
     }
   }
 }
