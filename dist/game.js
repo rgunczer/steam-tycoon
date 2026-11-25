@@ -1881,18 +1881,52 @@ stage.addEventListener('keydown', event => {
   }
 });
 
-function buildPliers(parent, handle, steel, gilt) {
+function buildRemovalTongs(parent) {
+  const jawOutline = new THREE.Shape();
+  jawOutline.moveTo(-0.047, -0.105);
+  jawOutline.bezierCurveTo(0.025, -0.135, 0.075, -0.096, 0.108, -0.037);
+  jawOutline.bezierCurveTo(0.178, 0.049, 0.292, 0.131, 0.302, 0.286);
+  jawOutline.bezierCurveTo(0.314, 0.394, 0.238, 0.473, 0.102, 0.47);
+  jawOutline.quadraticCurveTo(0.058, 0.465, 0.061, 0.421);
+  jawOutline.bezierCurveTo(0.163, 0.424, 0.213, 0.379, 0.213, 0.296);
+  jawOutline.bezierCurveTo(0.210, 0.209, 0.152, 0.156, 0.060, 0.103);
+  jawOutline.quadraticCurveTo(-0.060, 0.054, -0.067, -0.028);
+  jawOutline.quadraticCurveTo(-0.072, -0.072, -0.047, -0.105);
+  jawOutline.closePath();
+  const forgedJaw = new THREE.ExtrudeGeometry(jawOutline, {
+    depth: 0.039, bevelEnabled: true, bevelThickness: 0.013, bevelSize: 0.014, bevelSegments: 3,
+  });
+  forgedJaw.rotateX(-Math.PI / 2);
+
+  const handleShape = new THREE.LatheGeometry([
+    [0.031, -0.50], [0.045, -0.46], [0.046, -0.29], [0.058, -0.12],
+    [0.064, 0.22], [0.058, 0.38], [0.041, 0.48], [0, 0.50],
+  ].map(([radius, length]) => new THREE.Vector2(radius, length)), 20);
+
   for (const side of [-1, 1]) {
-    const jaw = new THREE.Group();
-    jaw.rotation.y = side * 0.43;
-    jaw.position.y = side * 0.012;
-    parent.add(jaw);
-    castBlock(jaw, handle, 0.126, 0.080, 0.51, side * 0.024, 0, 0.281, 0.029);
-    castBlock(jaw, steel, 0.087, 0.048, 0.30, 0, 0, -0.041, 0.013);
-    const tooth = castBlock(jaw, steel, 0.092, 0.052, 0.128, -side * 0.023, 0, -0.221, 0.016);
-    tooth.rotation.y = side * 0.47;
+    const half = new THREE.Group();
+    half.scale.x = side;
+    parent.add(half);
+    mesh(forgedJaw, rackGold, half, 0, side * 0.011 - 0.009, 0);
+    for (const [x, z] of [[0.179, -0.165], [0.207, -0.208], [0.223, -0.257], [0.227, -0.31], [0.204, -0.361]]) {
+      const tooth = castBlock(half, rackSteel, 0.038, 0.014, 0.019, x, side * 0.011 + 0.035, z, 0.004);
+      tooth.rotation.y = -0.34;
+    }
+    const spine = cylinder(half, bronze, 0.034, 1, 0, 0, 0);
+    positionRod(spine, new THREE.Vector3(0.017, 0.016, 0.026), new THREE.Vector3(0.17, 0.012, 0.268));
+    const grip = mesh(handleShape, frame, half);
+    const gripStart = new THREE.Vector3(0.124, 0.012, 0.152);
+    const gripEnd = new THREE.Vector3(0.298, 0.012, 0.538);
+    positionRod(grip, gripStart, gripEnd);
+    for (const [offset, radius] of [[0.077, 0.049], [0.865, 0.055]]) {
+      const center = gripStart.clone().lerp(gripEnd, offset);
+      const collar = cylinder(half, rackGold, radius, 0.036, center.x, center.y, center.z);
+      collar.quaternion.copy(grip.quaternion);
+    }
   }
-  cylinder(parent, gilt, 0.057, 0.056, 0, 0.035, 0);
+  cylinder(parent, bronze, 0.074, 0.086, 0, 0.021, 0);
+  cylinder(parent, rackGold, 0.054, 0.025, 0, 0.074, 0);
+  box(parent, dark, 0.058, 0.003, 0.010, 0, 0.088, 0).rotation.y = -0.44;
 }
 
 const buttons = [...document.querySelectorAll('[data-tool]')];
@@ -1929,7 +1963,6 @@ mesh(crestGeometry, inlay, handleAssembly, 0, 0, 0.054).scale.setScalar(0.63);
 const rackSteel = material(0x79828b, 0.70, 0.25);
 const rackGold = material(0xe2ae66, 0.72, 0.27);
 const rackCopper = material(0xbb7952, 0.63, 0.33);
-const rackHandle = material(0x632e40, 0.22, 0.41);
 for (const finish of [rackSteel, rackGold, rackCopper]) {
   Object.assign(finish, { bumpMap: brushedTexture.bumpMap, bumpScale: 0.006 });
 }
@@ -1937,7 +1970,7 @@ for (const finish of [rackSteel, rackGold, rackCopper]) {
 function seatDisplayPiece(model, type, deck, maxWidth, maxDepth, maxScale, z = 0) {
   if (type === 'riser') model.rotation.set(Math.PI / 2, -0.13, 0, 'YXZ');
   else if (type === 'riser-elbow') model.rotation.set(-0.98, -0.22, 0, 'YXZ');
-  else if (type === 'remove') model.rotation.y = -0.61;
+  else if (type === 'remove') model.rotation.y = -0.37;
   const bounds = new THREE.Box3().setFromObject(model, true);
   const span = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
@@ -1959,11 +1992,11 @@ for (const [index, button] of buttons.entries()) {
   box(slot, bronze, 0.72, 0.012, 0.024, 0, 0.117, 0.458);
   const model = new THREE.Group();
   if (type === 'remove') {
-    buildPliers(model, rackHandle, rackSteel, rackGold);
+    buildRemovalTongs(model);
   } else {
     buildPipeModel(model, type, { body: riseByPort[type] ? rackCopper : rackSteel, collar: rackGold, rivet: bronze });
   }
-  seatDisplayPiece(model, type, 0.114, 0.76, 0.84, riseByPort[type] || type === 'remove' ? 0.73 : 0.65, -0.055);
+  seatDisplayPiece(model, type, 0.114, 0.76, 0.84, type === 'remove' ? 0.89 : riseByPort[type] ? 0.73 : 0.65, -0.055);
   slot.add(model);
   rackSlots.set(type, { model, cushion, button });
 }
