@@ -1884,12 +1884,13 @@ stage.addEventListener('keydown', event => {
 function buildPliers(parent, handle, steel, gilt) {
   for (const side of [-1, 1]) {
     const jaw = new THREE.Group();
-    jaw.rotation.y = side * 0.27;
+    jaw.rotation.y = side * 0.43;
+    jaw.position.y = side * 0.012;
     parent.add(jaw);
-    castBlock(jaw, handle, 0.13, 0.09, 0.53, side * 0.025, 0, 0.29, 0.032);
-    castBlock(jaw, steel, 0.085, 0.052, 0.30, 0, 0, -0.036, 0.014);
-    const tooth = castBlock(jaw, steel, 0.093, 0.060, 0.14, -side * 0.032, 0, -0.23, 0.018);
-    tooth.rotation.y = side * 0.56;
+    castBlock(jaw, handle, 0.126, 0.080, 0.51, side * 0.024, 0, 0.281, 0.029);
+    castBlock(jaw, steel, 0.087, 0.048, 0.30, 0, 0, -0.041, 0.013);
+    const tooth = castBlock(jaw, steel, 0.092, 0.052, 0.128, -side * 0.023, 0, -0.221, 0.016);
+    tooth.rotation.y = side * 0.47;
   }
   cylinder(parent, gilt, 0.057, 0.056, 0, 0.035, 0);
 }
@@ -1932,6 +1933,19 @@ const rackHandle = material(0x632e40, 0.22, 0.41);
 for (const finish of [rackSteel, rackGold, rackCopper]) {
   Object.assign(finish, { bumpMap: brushedTexture.bumpMap, bumpScale: 0.006 });
 }
+// Display the loose fittings as a jeweller would lay them out. Their routing orientation stays unchanged.
+function seatDisplayPiece(model, type, deck, maxWidth, maxDepth, maxScale, z = 0) {
+  if (type === 'riser') model.rotation.set(Math.PI / 2, -0.13, 0, 'YXZ');
+  else if (type === 'riser-elbow') model.rotation.set(-0.98, -0.22, 0, 'YXZ');
+  else if (type === 'remove') model.rotation.y = -0.61;
+  const bounds = new THREE.Box3().setFromObject(model, true);
+  const span = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+  const scale = Math.min(maxScale, maxWidth / span.x, maxDepth / span.z, 0.28 / span.y);
+  model.scale.setScalar(scale);
+  model.position.set(-center.x * scale, deck - bounds.min.y * scale, z - center.z * scale);
+}
+
 const selectedLining = material(0x464d83, 0.08, 0.86);
 const emptyLining = material(0x0d132d, 0.07, 0.97);
 const rackSlots = new Map();
@@ -1946,13 +1960,10 @@ for (const [index, button] of buttons.entries()) {
   const model = new THREE.Group();
   if (type === 'remove') {
     buildPliers(model, rackHandle, rackSteel, rackGold);
-    model.rotation.y = -0.92;
   } else {
     buildPipeModel(model, type, { body: riseByPort[type] ? rackCopper : rackSteel, collar: rackGold, rivet: bronze });
   }
-  model.scale.setScalar(0.63);
-  const bounds = new THREE.Box3().setFromObject(model);
-  model.position.y = 0.105 - bounds.min.y;
+  seatDisplayPiece(model, type, 0.114, 0.76, 0.84, riseByPort[type] || type === 'remove' ? 0.73 : 0.65, -0.055);
   slot.add(model);
   rackSlots.set(type, { model, cushion, button });
 }
@@ -2030,9 +2041,7 @@ const rewardModels = new Map();
 for (const { type } of milestones.values()) {
   const model = new THREE.Group();
   buildPipeModel(model, type, { body: riseByPort[type] ? rackCopper : rackSteel, collar: rackGold, rivet: bronze });
-  model.scale.setScalar(0.72);
-  const bounds = new THREE.Box3().setFromObject(model);
-  model.position.y = 0.094 - bounds.min.y;
+  seatDisplayPiece(model, type, 0.097, 0.89, 0.87, 0.77);
   model.visible = false;
   rewardModels.set(type, model);
   rewardDrawer.add(model);
@@ -2847,20 +2856,54 @@ const pressureStamp = engraving(lid, 1.14, 0.217, 2.78, -0.21, 0.120);
 const ledgerMark = mesh(rivetGeometry, collarActive, lid, -1.59, -0.156, 0.136);
 ledgerMark.scale.setScalar(0.90);
 
-const keyFinish = material(0xd9b179, 0.37, 0.36);
-const keyHover = material(0xffdb98, 0.46, 0.32);
-const keyPressed = material(0xb6804a, 0.53, 0.37);
-const keyDisabled = material(0x7d6b59, 0.25, 0.64);
+const keyFinish = material(0xe8cf9e, 0.14, 0.47);
+const keyHover = material(0xffe8b6, 0.20, 0.40);
+const keyPressed = material(0xd09a53, 0.30, 0.39);
+const keyDisabled = material(0x8e7d69, 0.14, 0.63);
+const keyRim = material(0xe5af5c, 0.73, 0.32);
+const keySettings = new Map();
 const lidControls = [];
 let hoveredControl = null;
+
+function cartoucheFace(width, height, depth) {
+  const dimensions = [width, height, depth].join(',');
+  if (keySettings.has(dimensions)) return keySettings.get(dimensions);
+  const x = width / 2;
+  const y = height / 2;
+  const shoulder = Math.min(0.104, width * 0.19);
+  const outline = new THREE.Shape();
+  outline.moveTo(-x, 0);
+  outline.bezierCurveTo(-x, y * 0.68, -x + shoulder * 0.7, y * 0.63, -x + shoulder, y);
+  outline.lineTo(x - shoulder, y);
+  outline.bezierCurveTo(x - shoulder * 0.7, y * 0.63, x, y * 0.68, x, 0);
+  outline.bezierCurveTo(x, -y * 0.68, x - shoulder * 0.7, -y * 0.63, x - shoulder, -y);
+  outline.lineTo(-x + shoulder, -y);
+  outline.bezierCurveTo(-x + shoulder * 0.7, -y * 0.63, -x, -y * 0.68, -x, 0);
+  outline.closePath();
+  const geometry = new THREE.ExtrudeGeometry(outline, {
+    depth, bevelThickness: 0.008, bevelSize: 0.010, bevelSegments: 2, curveSegments: 5,
+  });
+  keySettings.set(dimensions, geometry);
+  return geometry;
+}
 
 function castKey(x, y, width, label, invoke, disabled = () => false, pressed = () => false, height = 0.323) {
   const group = new THREE.Group();
   group.position.set(x, y, 0.122);
   lid.add(group);
-  castBlock(group, bronze, width + 0.031, height + 0.038, 0.068, 0, 0, 0, 0.019);
-  const keyTop = castBlock(group, keyFinish, width, height, 0.047, 0, 0, 0.042, 0.016);
-  const write = engraving(group, width - 0.041, 0.220, 0, 0, 0.071, { color: '#251814', fontScale: 0.80 });
+  mesh(cartoucheFace(width + 0.046, height + 0.046, 0.016), bronze, group);
+  mesh(cartoucheFace(width + 0.023, height + 0.022, 0.015), keyRim, group, 0, 0, 0.020);
+  mesh(cartoucheFace(width - 0.028, height - 0.020, 0.010), enamelBlue, group, 0, 0, 0.036);
+  const keyTop = mesh(cartoucheFace(width - 0.058, height - 0.042, 0.012), keyFinish, group, 0, 0, 0.044);
+  if (width > 0.60) {
+    for (const side of [-1, 1]) {
+      const flourish = mesh(crestGeometry, bronze, group, side * (width / 2 - 0.108), 0, 0.064);
+      flourish.rotation.z = side * Math.PI / 2;
+      flourish.scale.setScalar(0.32);
+    }
+  }
+  const write = engraving(group, width - (width > 0.60 ? 0.26 : 0.095), 0.199, 0, 0.005, 0.072,
+    { color: '#382317', italic: true, fontScale: 0.84 });
   const control = { keyTop, write, label, invoke, disabled, pressed };
   group.userData.control = control;
   lidControls.push(control);
