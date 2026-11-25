@@ -478,11 +478,25 @@ function noiseField(columns, rows, random) {
   };
 }
 
+function repeatingTexture(pixels) {
+  const bytes = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+  const texture = new THREE.DataTexture(bytes, textureSize, textureSize);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function surfaceTexture(kind) {
   const random = randomTextureSample();
   const wear = noiseField(7, 7, random);
-  const grain = kind === 'brushed' ? noiseField(3, 53, random) : noiseField(42, 42, random);
-  const pixels = new Uint8Array(textureSize * textureSize * 4);
+  const brushed = kind === 'brushed';
+  const grain = brushed ? noiseField(3, 53, random) : noiseField(42, 42, random);
+  const pixels = new Uint8ClampedArray(textureSize * textureSize * 4);
+  const heights = new Uint8ClampedArray(pixels.length);
   for (let y = 0; y < textureSize; y++) {
     for (let x = 0; x < textureSize; x++) {
       const u = x / textureSize;
@@ -495,11 +509,13 @@ function surfaceTexture(kind) {
         : 195 + 36 * tarnish + 20 * tooth - (speck < 0.05 ? 47 : 0);
       const warmth = (1 - tarnish) * 11;
       const i = (y * textureSize + x) * 4;
-      pixels.set([Math.min(255, shade + warmth), shade, shade - warmth, 255], i);
+      pixels.set([shade + warmth, shade, shade - warmth, 255], i);
+      const pitting = speck < (brushed ? 0.018 : 0.047) ? 27 : 0;
+      const relief = 134 + (tooth - 0.5) * (brushed ? 52 : 74) - pitting;
+      heights.set([relief, relief, relief, 255], i);
     }
   }
   // Offset paired dark and bright strokes give scratches a lip that also catches the normal lighting.
-  const brushed = kind === 'brushed';
   const scratchCount = brushed ? 105 : 37;
   for (let i = 0; i < scratchCount; i++) {
     const x = Math.floor(random() * textureSize);
@@ -513,21 +529,18 @@ function surfaceTexture(kind) {
       for (const [offset, amount] of [[0, -wear], [1, wear * 0.48]]) {
         const base = (((row + offset) & (textureSize - 1)) * textureSize + col) * 4;
         for (let channel = 0; channel < 3; channel++) {
-          pixels[base + channel] = THREE.MathUtils.clamp(pixels[base + channel] + amount, 0, 255);
+          pixels[base + channel] += amount;
+          heights[base + channel] += amount * (brushed ? 1.30 : 0.95);
         }
       }
     }
   }
-  const albedo = new THREE.DataTexture(pixels, textureSize, textureSize);
-  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
-  albedo.magFilter = THREE.LinearFilter;
-  albedo.minFilter = THREE.LinearMipmapLinearFilter;
-  albedo.generateMipmaps = true;
-  albedo.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const relief = albedo.clone();
+  // Keep patina in the color and roughness maps while the height map carries scratches and pits.
+  const roughness = repeatingTexture(pixels);
+  const albedo = roughness.clone();
   albedo.colorSpace = THREE.SRGBColorSpace;
-  albedo.needsUpdate = relief.needsUpdate = true;
-  return { map: albedo, bumpMap: relief, roughnessMap: relief };
+  albedo.needsUpdate = true;
+  return { map: albedo, bumpMap: repeatingTexture(heights), roughnessMap: roughness };
 }
 
 const castTexture = surfaceTexture('cast');
@@ -535,31 +548,32 @@ const brushedTexture = surfaceTexture('brushed');
 const enamelTexture = surfaceTexture('enamel');
 const tileFinishes = [0xe1cfb4, 0xd3bea2, 0xd9c6aa, 0xdecaad].map(color => material(color, 0.06, 0.70));
 
-function makeWoodTexture() {
+function makeWoodTextures() {
   const random = randomTextureSample();
   const rings = noiseField(7, 53, random);
   const shade = noiseField(4, 7, random);
-  const pixels = new Uint8Array(textureSize * textureSize * 4);
+  const pores = noiseField(13, 61, random);
+  const pixels = new Uint8ClampedArray(textureSize * textureSize * 4);
+  const heights = new Uint8ClampedArray(pixels.length);
   for (let y = 0; y < textureSize; y++) {
     for (let x = 0; x < textureSize; x++) {
       const u = x / textureSize;
       const v = y / textureSize;
-      const grain = rings(u, (v + 0.026 * Math.sin(u * Math.PI * 2) + 1) % 1);
+      const band = (v + 0.026 * Math.sin(u * Math.PI * 2) + 1) % 1;
+      const grain = rings(u, band);
       const light = 145 + 62 * grain + 31 * shade(u, v);
-      pixels.set([light, light * 0.85, light * 0.73, 255], (y * textureSize + x) * 4);
+      const relief = 132 + (grain - 0.5) * 88 - 39 * Math.pow(pores(u, band), 5);
+      const index = (y * textureSize + x) * 4;
+      pixels.set([light, light * 0.85, light * 0.73, 255], index);
+      heights.set([relief, relief, relief, 255], index);
     }
   }
-  const wood = new THREE.DataTexture(pixels, textureSize, textureSize);
-  wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
+  const wood = repeatingTexture(pixels);
   wood.colorSpace = THREE.SRGBColorSpace;
-  wood.minFilter = THREE.LinearMipmapLinearFilter;
-  wood.magFilter = THREE.LinearFilter;
-  wood.generateMipmaps = true;
-  wood.needsUpdate = true;
-  return wood;
+  return { map: wood, bumpMap: repeatingTexture(heights) };
 }
 
-function makeTileTexture() {
+function makeTileTextures() {
   const tile = document.createElement('canvas');
   tile.width = tile.height = 256;
   const ctx = tile.getContext('2d');
@@ -584,17 +598,40 @@ function makeTileTexture() {
     ctx.fillStyle = `rgba(102, 71, 47, ${random() * 0.12})`;
     ctx.fillRect(random() * 256, random() * 256, 2, 2);
   }
-  ctx.strokeStyle = '#8b694eac';
+  paintTileEngraving(ctx, ['#8b694eac', '#9e765072', '#99744e9c', '#99744e78', '#916b4696']);
+  const relief = document.createElement('canvas');
+  relief.width = relief.height = 256;
+  const reliefContext = relief.getContext('2d');
+  const tooth = noiseField(47, 47, random);
+  const heightField = reliefContext.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) {
+    for (let x = 0; x < 256; x++) {
+      const height = 169 + 34 * tooth(x / 256, y / 256);
+      heightField.data.set([height, height, height, 255], (y * 256 + x) * 4);
+    }
+  }
+  reliefContext.putImageData(heightField, 0, 0);
+  paintTileEngraving(reliefContext, ['#757575', '#9d9d9d', '#7a7a7a', '#919191', '#929292']);
+  const albedo = new THREE.CanvasTexture(tile);
+  albedo.colorSpace = THREE.SRGBColorSpace;
+  const bumpMap = new THREE.CanvasTexture(relief);
+  albedo.anisotropy = bumpMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return { map: albedo, bumpMap };
+}
+
+function paintTileEngraving(ctx, [edge, rule, scroll, stud, crest]) {
+  ctx.save();
+  ctx.strokeStyle = edge;
   ctx.lineWidth = 2;
   ctx.strokeRect(13, 13, 230, 230);
-  ctx.strokeStyle = '#9e765072';
+  ctx.strokeStyle = rule;
   ctx.strokeRect(19, 19, 218, 218);
   for (let i = 0; i < 4; i++) {
     ctx.save();
     ctx.translate(128, 128);
     ctx.rotate(i * Math.PI / 2);
     ctx.translate(-128, -128);
-    ctx.strokeStyle = '#99744e9c';
+    ctx.strokeStyle = scroll;
     ctx.beginPath();
     ctx.moveTo(14, 57);
     ctx.bezierCurveTo(29, 45, 27, 26, 56, 15);
@@ -603,14 +640,14 @@ function makeTileTexture() {
     ctx.moveTo(21, 36);
     ctx.bezierCurveTo(40, 30, 32, 21, 25, 24);
     ctx.stroke();
-    ctx.fillStyle = '#99744e78';
+    ctx.fillStyle = stud;
     ctx.beginPath();
     ctx.ellipse(29, 40, 2, 5, Math.PI / 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
   ctx.translate(128, 127);
-  ctx.fillStyle = '#916b4696';
+  ctx.fillStyle = crest;
   ctx.beginPath();
   ctx.moveTo(0, 20);
   ctx.bezierCurveTo(-13, 7, -21, -7, -12, -25);
@@ -633,20 +670,17 @@ function makeTileTexture() {
   ctx.quadraticCurveTo(-1, 28, -7, 29);
   ctx.quadraticCurveTo(-12, 25, 0, 15);
   ctx.fill();
-  const texture = new THREE.CanvasTexture(tile);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  return texture;
+  ctx.restore();
 }
 
-const tileTexture = makeTileTexture();
+const tileTexture = makeTileTextures();
 for (const finish of tileFinishes) {
-  Object.assign(finish, castTexture, { map: tileTexture, bumpScale: 0.013 });
+  Object.assign(finish, tileTexture, { roughnessMap: castTexture.roughnessMap, bumpScale: 0.019 });
 }
 for (const finish of [deckFinish, wallFinish, platformFinish, castSteel]) {
   Object.assign(finish, castTexture, { bumpScale: 0.022 });
 }
-Object.assign(frame, brushedTexture, { map: makeWoodTexture(), bumpScale: 0.012 });
+Object.assign(frame, makeWoodTextures(), { bumpScale: 0.014 });
 Object.assign(velvet, enamelTexture, { bumpScale: 0.024 });
 Object.assign(boilerCopper, castTexture, { bumpScale: 0.020 });
 for (const finish of [iron, pipeSteel, bronze, brass, collarActive, riserFinish]) {
@@ -1895,6 +1929,9 @@ const rackSteel = material(0x79828b, 0.70, 0.25);
 const rackGold = material(0xe2ae66, 0.72, 0.27);
 const rackCopper = material(0xbb7952, 0.63, 0.33);
 const rackHandle = material(0x632e40, 0.22, 0.41);
+for (const finish of [rackSteel, rackGold, rackCopper]) {
+  Object.assign(finish, { bumpMap: brushedTexture.bumpMap, bumpScale: 0.006 });
+}
 const selectedLining = material(0x464d83, 0.08, 0.86);
 const emptyLining = material(0x0d132d, 0.07, 0.97);
 const rackSlots = new Map();
