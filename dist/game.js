@@ -2059,66 +2059,134 @@ function prepareMilestone(index) {
   setRewardDrawer(false);
 }
 
-const vapor = document.createElement('canvas');
-vapor.width = vapor.height = 64;
-const paint = vapor.getContext('2d');
-for (const [x, y, radius, alpha] of [[32, 31, 24, 0.66], [23, 28, 17, 0.44], [40, 38, 19, 0.45], [35, 20, 15, 0.35]]) {
-  const cloud = paint.createRadialGradient(x, y, 1, x, y, radius);
-  cloud.addColorStop(0, `rgba(255,255,255,${alpha})`);
-  cloud.addColorStop(1, 'rgba(255,255,255,0)');
-  paint.fillStyle = cloud;
-  paint.fillRect(0, 0, 64, 64);
+// Layered cloud profiles give each sprite both a shaded interior and a lit edge.
+function makeVaporTexture(variant) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 96;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(96, 96);
+  const seed = randomTextureSample();
+  for (let i = 0; i < variant * 31; i++) seed();
+  const clouds = noiseField(7, 7, seed);
+  const billows = noiseField(15, 15, seed);
+  const grain = noiseField(29, 29, seed);
+
+  function density(u, v) {
+    const x = (u - 0.5) * 2;
+    const y = (v - 0.5) * 2;
+    const envelope = 1 - Math.hypot(x * 1.06, y * 1.02);
+    const channels = (clouds(u, v) - 0.5) * 0.56
+      + (billows(u, v) - 0.5) * 0.27 + (grain(u, v) - 0.5) * 0.11;
+    const edge = THREE.MathUtils.smoothstep(envelope, 0, 0.29);
+    return edge * THREE.MathUtils.smoothstep(envelope * 0.58 + channels, 0.015, 0.51);
+  }
+
+  const shadow = [97, 113, 134];
+  const light = [244, 246, 240];
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const u = (x + 0.5) / canvas.width;
+      const v = (y + 0.5) / canvas.height;
+      const depth = density(u, v);
+      const upperDensity = density(Math.max(0, u - 0.041), Math.max(0, v - 0.061));
+      const shading = THREE.MathUtils.clamp(0.61 - 0.37 * depth
+        + 1.12 * (depth - upperDensity) + (clouds(u, v) - 0.5) * 0.51, 0.02, 1);
+      const offset = (y * canvas.width + x) * 4;
+      for (let channel = 0; channel < 3; channel++) {
+        image.data[offset + channel] = THREE.MathUtils.lerp(shadow[channel], light[channel], shading);
+      }
+      image.data[offset + 3] = Math.round(236 * Math.pow(depth, 0.81));
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
-const vaporTexture = new THREE.CanvasTexture(vapor);
-const particles = Array.from({ length: 72 }, () => {
+
+const vaporTextures = Array.from({ length: 5 }, (_, index) => makeVaporTexture(index));
+const steamProfiles = {
+  jet:   { speed: 1.72, lift: 0.28, curl: 0.23, life: 1.18, size: 0.25, growth: 0.71, opacity: 0.90 },
+  vent:  { speed: 0.00, lift: 0.66, curl: 0.18, life: 1.34, size: 0.22, growth: 0.59, opacity: 0.81 },
+  seam:  { speed: 0.76, lift: 0.33, curl: 0.19, life: 0.82, size: 0.19, growth: 0.38, opacity: 0.66 },
+};
+const particles = Array.from({ length: 112 }, () => {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: vaporTexture, color: 0xe2edec, transparent: true, depthWrite: false,
+    map: vaporTextures[0], transparent: true, depthWrite: false, toneMapped: false,
   }));
   sprite.visible = false;
   tray.add(sprite);
-  return { sprite, age: 0, dx: 0, dz: 0, wisp: false };
+  return { sprite };
 });
+
 let nextParticle = 0;
-let emission = 0;
+let jetClock = 0;
+let ventClock = 0;
 let nextWisp = 0.84;
 
-function emitSteam(outlet, wisp = false) {
+function emitSteam(outlet, kind) {
   const particle = particles[nextParticle];
   nextParticle = (nextParticle + 1) % particles.length;
+  const profile = steamProfiles[kind];
+  const speed = profile.speed * (0.85 + Math.random() * 0.30);
+  particle.profile = profile;
   particle.age = 0;
-  particle.wisp = wisp;
-  particle.dx = outlet.dx * 0.78 + (Math.random() - 0.5) * 0.2;
-  particle.dz = outlet.dz * 0.78 + (Math.random() - 0.5) * 0.2;
+  particle.life = profile.life * (0.89 + Math.random() * 0.26);
+  particle.dx = outlet.dx * speed;
+  particle.dz = outlet.dz * speed;
+  particle.phase = Math.random() * Math.PI * 2;
+  particle.twist = (Math.random() - 0.5) * 1.5;
   particle.sprite.position.set(outlet.x, outlet.y, outlet.z);
-  particle.sprite.material.rotation = Math.random() * Math.PI * 2;
+  particle.sprite.material.map = vaporTextures[Math.floor(Math.random() * vaporTextures.length)];
+  particle.sprite.material.rotation = (Math.random() - 0.5) * 1.7;
   particle.sprite.visible = true;
 }
 
 function animateSteam(dt) {
-  emission += dt;
-  if (emission >= (powered ? 0.092 : 0.045)) {
-    emission = 0;
-    for (const outlet of outlets) emitSteam(outlet);
+  const jetInterval = 0.047;
+  const ventInterval = 0.089;
+  jetClock += dt;
+  ventClock += dt;
+  const jetReady = jetClock >= jetInterval;
+  const ventReady = ventClock >= ventInterval;
+  if (jetReady) jetClock %= jetInterval;
+  if (ventReady) ventClock %= ventInterval;
+  if (jetReady || ventReady) {
+    for (const outlet of outlets) {
+      const isJet = Boolean(outlet.dx || outlet.dz);
+      if (isJet ? jetReady : ventReady) emitSteam(outlet, isJet ? 'jet' : 'vent');
+    }
   }
   if (warmJoints.length) {
     nextWisp -= dt;
     if (nextWisp <= 0) {
       nextWisp = 0.85 + Math.random() * 1.5;
-      emitSteam(warmJoints[Math.floor(Math.random() * warmJoints.length)], true);
+      emitSteam(warmJoints[Math.floor(Math.random() * warmJoints.length)], 'seam');
     }
   }
+
   for (const particle of particles) {
     if (!particle.sprite.visible) continue;
     particle.age += dt;
-    const { sprite, age, dx, dz, wisp } = particle;
-    const life = wisp ? 0.86 : 1.1;
-    sprite.visible = age < life;
-    sprite.position.x += dx * dt * (1 - age * 0.6);
-    sprite.position.z += dz * dt * (1 - age * 0.6);
-    sprite.position.y += (0.25 + age * 0.53) * dt;
-    sprite.scale.setScalar(wisp ? 0.14 + age * 0.48 : 0.13 + age * 0.64);
-    sprite.material.rotation += dt * 0.52;
-    sprite.material.opacity = Math.max(0, (wisp ? 0.63 : 0.73) * (1 - age / life));
+    const { sprite, age, profile, life, dx, dz, phase, twist } = particle;
+    const progress = age / life;
+    if (progress >= 1) {
+      sprite.visible = false;
+      continue;
+    }
+    // Steam has its strongest push at the mouth, then curls and rises as it mixes with the air.
+    const thrust = Math.exp(-age * 2.35);
+    const roll = profile.curl * (0.14 + progress * 0.86);
+    const spread = phase + age * 4.8;
+    sprite.position.x += (dx * thrust + Math.cos(spread) * roll) * dt;
+    sprite.position.z += (dz * thrust + Math.sin(spread) * roll) * dt;
+    sprite.position.y += (profile.lift * (0.68 + 0.64 * progress) + 0.095 * Math.sin(spread)) * dt;
+    const bloom = profile.size + profile.growth * Math.pow(progress, 0.78);
+    sprite.scale.set(bloom * (0.95 + 0.13 * Math.sin(phase)), bloom * (0.86 + 0.35 * progress), 1);
+    sprite.material.rotation += twist * (0.42 + progress) * dt;
+    const condense = 0.67 + 0.33 * THREE.MathUtils.smoothstep(progress, 0, 0.18);
+    const disperse = 1 - THREE.MathUtils.smoothstep(progress, 0.23, 1);
+    sprite.material.opacity = profile.opacity * condense * disperse;
   }
 }
 
@@ -2468,6 +2536,7 @@ function clearSteamAndSelection() {
   snapTime = 0;
   buttons[0].click();
   nextWisp = 0.84;
+  jetClock = ventClock = 0;
   for (const { sprite } of particles) sprite.visible = false;
 }
 
