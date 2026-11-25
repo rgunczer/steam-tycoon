@@ -1163,7 +1163,7 @@ function buildLevel(definition) {
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
     ...definition, group, gaugeNeedle, vent, valve, pressure: 0, targetPressure: 0, pressureVelocity: 0,
-    completionTime: 0, rewardShown: false, solved: false, past: [], future: [],
+    completionTime: 0, celebrated: false, rewardShown: false, solved: false, past: [], future: [],
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
     ])),
@@ -1971,8 +1971,8 @@ function matchingPort(x, z, direction, height) {
     port.direction === (direction + 2) % 4 && port.height === height);
 }
 
-function updateFlow() {
-  const active = new Set([level.sourceKey]);
+function updateFlow(celebrate = true) {
+  const depth = new Map([[level.sourceKey, 0]]);
   const queue = [level.sourceKey];
   const leaks = [];
   const joints = [];
@@ -1989,8 +1989,8 @@ function updateFlow() {
           x: world(x) + 0.49 * dx, y: pipeHeight + height * heightStep,
           z: world(z) + 0.49 * dz, dx, dz,
         });
-      } else if (!active.has(next)) {
-        active.add(next);
+      } else if (!depth.has(next)) {
+        depth.set(next, depth.get(index) + 1);
         queue.push(next);
         if (level.pipes.has(index) && level.pipes.has(next)) {
           joints.push({
@@ -2003,38 +2003,44 @@ function updateFlow() {
   }
   const leakCount = leaks.length;
   let supplied = 0;
+  const exhausts = [];
   for (const [index, machine] of level.machines) {
     const wasPowered = machine.powered;
-    machine.powered = active.has(index);
+    machine.powered = depth.has(index);
     if (machine.powered && !wasPowered) {
       machine.startup = 0;
       playSound('hiss');
     }
     if (machine.powered) {
       supplied++;
-      leaks.push(machine.vent);
+      exhausts.push(machine.vent);
     }
     machine.lampMaterial.emissive.setHex(machine.powered ? 0xff9b28 : 0x000000);
     if (!machine.powered) machine.lampLight.intensity = 0;
   }
+  const wasComplete = powered;
   powered = supplied === level.machines.size && leakCount === 0;
-  if (!powered) level.completionTime = 0;
+  if (!powered) {
+    level.completionTime = 0;
+    if (wasComplete) stopCelebration();
+  } else if (!wasComplete) {
+    for (const { sprite } of particles) sprite.visible = false;
+    if (celebrate && !level.celebrated) startCelebration(depth);
+  }
   const supply = supplied / level.machines.size;
   level.targetPressure = Math.round((35 + 65 * supply) / (1 + 0.85 * leakCount));
   pressureMeter.setAttribute('aria-valuenow', String(level.targetPressure));
   pressureReadout.textContent = `${level.targetPressure}%`;
-  outlets = leaks;
-  warmJoints = joints;
+  // Working exhausts are atmospheric only. A sealed board visibly settles.
+  outlets = powered ? [] : [...leaks, ...exhausts];
+  warmJoints = powered ? [] : joints;
   for (const [index, pipe] of level.pipes) {
-    for (const collar of pipe.collars) collar.material = active.has(index) ? collarActive : brass;
+    for (const collar of pipe.collars) collar.material = depth.has(index) ? collarActive : brass;
   }
   giftCase.classList.toggle('powered', powered);
-  const leakStatus = leakCount === 1 ? '1 leak' : `${leakCount} leaks`;
-  const machineName = level.machineName ?? level.name;
-  const message = level.machines.size === 1
-    ? (powered ? `Steam delivered · ${machineName} ${level.action}` : `Boiler on · ${machineName} idle`)
-    : (powered ? `Board complete · ${supplied}/${level.machines.size} machines powered`
-      : `${supplied}/${level.machines.size} machines powered · ${leakStatus}`);
+  const leakStatus = leakCount === 0 ? 'No leaks' : leakCount === 1 ? '1 leak' : `${leakCount} leaks`;
+  const tally = `${supplied}/${level.machines.size} powered · ${leakStatus}`;
+  const message = powered ? `Board complete · ${tally}` : tally;
   if (status.textContent !== message) status.textContent = message;
   if (powered) level.solved = true;
   recordProgress();
@@ -2813,7 +2819,7 @@ function emitSteam(outlet, kind) {
 function animateBoiler(dt) {
   const pressure = THREE.MathUtils.clamp(level.pressure / 100, 0, 1);
   boilerCycle = (boilerCycle + dt * (0.34 + pressure * 0.34)) % 1;
-  const opening = THREE.MathUtils.smoothstep(boilerCycle, 0.55, 0.70)
+  const opening = powered ? 0 : THREE.MathUtils.smoothstep(boilerCycle, 0.55, 0.70)
     * (1 - THREE.MathUtils.smoothstep(boilerCycle, 0.85, 0.99));
   if (level.valve) {
     const angle = pressure * 1.75 + opening * (0.30 + pressure * 0.28);
@@ -2880,6 +2886,84 @@ function animateSteam(dt, elapsed) {
   }
 }
 
+function makeGoldGlint() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const pen = canvas.getContext('2d');
+  const glow = pen.createRadialGradient(32, 32, 0, 32, 32, 30);
+  glow.addColorStop(0, '#fff8d3');
+  glow.addColorStop(0.23, '#ffd47c9d');
+  glow.addColorStop(1, '#ce712200');
+  pen.fillStyle = glow;
+  pen.fillRect(0, 0, 64, 64);
+  pen.fillStyle = '#fff1b5';
+  pen.beginPath();
+  for (const [x, y] of [[32, 3], [35, 29], [53, 32], [35, 35],
+    [32, 61], [29, 35], [11, 32], [29, 29]]) pen.lineTo(x, y);
+  pen.closePath();
+  pen.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+const glintTexture = makeGoldGlint();
+const glints = Array.from({ length: size * size }, () => {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glintTexture, transparent: true, depthWrite: false, toneMapped: false,
+  }));
+  sprite.visible = false;
+  tray.add(sprite);
+  return sprite;
+});
+let celebration = null;
+
+function startCelebration(depth) {
+  const effects = [...depth].map(([index, distance], i) => {
+    const sprite = glints[i];
+    const fixture = index === level.sourceKey || level.machines.has(index);
+    const height = heightAt(index) * heightStep + pipeHeight + (fixture ? 0.62 : 0.14);
+    return {
+      sprite, x: world(index % size), z: world(Math.floor(index / size)),
+      height, delay: distance * 0.082, size: fixture ? 0.69 : 0.45,
+    };
+  });
+  celebration = { effects, time: 0, started: false };
+}
+
+function stopCelebration() {
+  if (celebration) {
+    for (const { sprite } of celebration.effects) sprite.visible = false;
+    celebration = null;
+  }
+  stopCompletionTune();
+}
+
+function animateCelebration(elapsed) {
+  if (!celebration) return;
+  celebration.time += elapsed;
+  const time = celebration.time - 0.42;
+  if (time < 0) return;
+  if (!celebration.started) {
+    celebration.started = true;
+    level.celebrated = true;
+    playCompletionTune();
+  }
+  let finished = true;
+  for (const { sprite, x, z, height, delay, size: scale } of celebration.effects) {
+    const phase = (time - delay) / 0.65;
+    finished &&= phase >= 1;
+    sprite.visible = phase > 0 && phase < 1;
+    if (!sprite.visible) continue;
+    const shine = Math.sin(Math.PI * phase);
+    sprite.material.opacity = shine;
+    sprite.material.rotation = phase * 0.65;
+    sprite.position.set(x - phase * 0.09, height + phase * 0.24, z);
+    sprite.scale.setScalar(scale * (0.44 + 0.56 * shine));
+  }
+  if (finished) celebration = null;
+}
+
 let audio = null;
 let noiseBuffer = null;
 let muted = false;
@@ -2902,8 +2986,79 @@ soundButton.addEventListener('click', () => {
   muted = !muted;
   soundButton.setAttribute('aria-pressed', String(muted));
   soundButton.textContent = muted ? 'Sound off' : 'Sound on';
-  if (!muted) enableSound();
+  if (muted) stopCompletionTune();
+  else enableSound();
 });
+
+// An original eight-bar court dance for a pinned music box, in three beats to the bar.
+const completionMelody = [
+  [[74, 0], [78, 1], [81, 2], [79, 2.5]],
+  [[78, 0], [76, 1], [74, 2]],
+  [[76, 0], [79, 1], [83, 2], [81, 2.5]],
+  [[79, 0], [78, 1], [76, 2]],
+  [[81, 0], [86, 1], [85, 2], [83, 2.5]],
+  [[81, 0], [79, 1], [78, 2]],
+  [[76, 0], [79, 0.5], [81, 1], [85, 2]],
+  [[86, 0], [81, 0.5], [78, 1], [74, 2]],
+];
+const completionBass = [
+  [50, 57, 62], [54, 57, 62], [55, 59, 62], [52, 59, 64],
+  [54, 57, 62], [55, 59, 62], [57, 64, 67], [50, 57, 62],
+];
+let completionAudio = null;
+
+function stopCompletionTune() {
+  if (!completionAudio) return;
+  const { bus, voices } = completionAudio;
+  completionAudio = null;
+  const now = audio.currentTime;
+  bus.gain.setTargetAtTime(0, now, 0.025);
+  for (const voice of voices) voice.stop(now + 0.12);
+}
+
+function playCompletionTune() {
+  if (muted || audio?.state !== 'running') return;
+  stopCompletionTune();
+  const bus = audio.createGain();
+  bus.gain.value = 0.8;
+  bus.connect(audio.destination);
+  const voices = new Set();
+  completionAudio = { bus, voices };
+  const tines = audio.createPeriodicWave(
+    new Float32Array(5), new Float32Array([0, 1, 0.19, 0.28, 0.08]),
+  );
+  const beat = 0.40;
+  const intro = audio.currentTime + 0.045;
+  const pluck = (pitch, offset, treble) => {
+    const start = intro + offset * beat;
+    const note = audio.createOscillator();
+    const envelope = audio.createGain();
+    const decay = treble ? 0.76 : 0.43;
+    if (treble) note.setPeriodicWave(tines);
+    note.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+    envelope.gain.setValueAtTime(0.001, start);
+    envelope.gain.exponentialRampToValueAtTime(treble ? 0.112 : 0.047, start + 0.008);
+    envelope.gain.exponentialRampToValueAtTime(treble ? 0.029 : 0.013, start + 0.13);
+    envelope.gain.exponentialRampToValueAtTime(0.001, start + decay);
+    note.connect(envelope).connect(bus);
+    note.start(start);
+    note.stop(start + decay + 0.02);
+    voices.add(note);
+    note.onended = () => {
+      voices.delete(note);
+      note.disconnect();
+      envelope.disconnect();
+      if (voices.size === 0) {
+        bus.disconnect();
+        if (completionAudio?.bus === bus) completionAudio = null;
+      }
+    };
+  };
+  for (const [bar, notes] of completionMelody.entries()) {
+    for (const [pitch, offset] of notes) pluck(pitch, bar * 3 + offset, true);
+    for (const [offset, pitch] of completionBass[bar].entries()) pluck(pitch, bar * 3 + offset, false);
+  }
+}
 
 function playSound(kind) {
   if (muted || audio?.state !== 'running') return;
@@ -3265,7 +3420,9 @@ function selectLevel(index) {
     levelSelect.value = String(tutorialIndex);
     return;
   }
+  stopCelebration();
   if (level) level.group.visible = false;
+  powered = false;
   tray.rotation.y = 0;
   tray.updateMatrixWorld();
   const firstVisit = !boards[index];
@@ -3315,7 +3472,7 @@ function selectLevel(index) {
   updateView();
   clearSteamAndSelection();
   updateHistoryButtons();
-  updateFlow();
+  updateFlow(false);
 }
 
 levelSelect.addEventListener('change', () => selectLevel(Number(levelSelect.value)));
@@ -3693,11 +3850,11 @@ const lidBounds = boxCorners(new THREE.Box3().setFromObject(lid));
 function updateCaseLid() {
   const number = Number(levelSelect.value) + 1;
   const boardTitle = level.tutorial ? level.name : `${number} · ${level.name}`;
-  boardStamp(`${level.solved ? '✓ ' : ''}${boardTitle}`);
+  boardStamp(`${powered ? '✓ ' : ''}${boardTitle}`);
   ledgerStamp(ledgerCount.textContent);
   pressureStamp(`Pressure ${pressureReadout.textContent}`);
   inHandStamp(drawerDiscovered ? `In hand · ${selectedTool.textContent}` : 'Release the pipe rack');
-  let readout = rewardOpen ? rewardLabel.textContent : status.textContent;
+  let readout = powered && rewardOpen ? rewardLabel.textContent : status.textContent;
   if (level.tutorial) {
     if (powered) readout = 'First fitting complete · Next board ›';
     else if (!drawerOpen && tool !== 'elbow') readout = 'Pull the brass ring to open the rack';
@@ -3726,6 +3883,7 @@ renderer.setAnimationLoop(now => {
   turnTray(Math.min(elapsed, 0.26));
   moveDrawer(Math.min(elapsed, 0.26));
   animateReward(Math.min(elapsed, 0.26));
+  animateCelebration(Math.min(elapsed, 0.26));
   animateCover(Math.min(elapsed, 0.26));
   animateMachine(dt, elapsed);
   animateSnap(dt);
