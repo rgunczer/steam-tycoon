@@ -780,11 +780,12 @@ function buildLevel(definition) {
 
   const boiler = atTile(...definition.source, group, heights.get(key(...definition.source)) ?? 0);
   const makeBoiler = definition.boiler ?? buildBoiler;
-  const gaugeNeedle = makeBoiler(boiler, definition.view[0]);
+  const { gaugeNeedle, vent, valve } = makeBoiler(boiler, definition.view[0]);
+  vent.add(boiler.position);
 
   const receivers = definition.receivers ?? [{ position: definition.destination, build: definition.build }];
   return {
-    ...definition, group, gaugeNeedle, pressure: 0, targetPressure: 0, pressureVelocity: 0,
+    ...definition, group, gaugeNeedle, vent, valve, pressure: 0, targetPressure: 0, pressureVelocity: 0,
     completionTime: 0, rewardShown: false, solved: false, past: [], future: [],
     machines: new Map(receivers.map(({ position, port = 2, build }) => [
       key(...position), buildReceiver(group, position, port, build, heights.get(key(...position)) ?? 0),
@@ -810,6 +811,14 @@ function buildBoilerOutlet(boiler) {
   cylinder(boiler, brass, 0.157, 0.072, 0.452, pipeHeight, 0, 'x');
 }
 
+function buildBoilerVent(boiler, x, top, z, radius) {
+  cylinder(boiler, bronze, radius * 0.81, 0.16, x, top - 0.10, z);
+  cylinder(boiler, brass, radius, 0.037, x, top - 0.019, z);
+  cylinder(boiler, gasket, radius * 0.61, 0.006, x, top + 0.001, z);
+  // The outlet is expressed in the tray's coordinates, alongside pipe and receiver exhausts.
+  return new THREE.Vector3(x, top + 0.035, z);
+}
+
 function buildBoiler(boiler, heading) {
   buildBoilerBase(boiler);
   const centerY = 0.43;
@@ -833,9 +842,7 @@ function buildBoiler(boiler, heading) {
   }
 
   buildBoilerOutlet(boiler);
-  cylinder(boiler, bronze, 0.074, 0.18, -0.22, 0.75, -0.126);
-  cylinder(boiler, brass, 0.091, 0.04, -0.22, 0.84, -0.126);
-  cylinder(boiler, gasket, 0.054, 0.006, -0.22, 0.861, -0.126);
+  const vent = buildBoilerVent(boiler, -0.22, 0.86, -0.126, 0.091);
   cylinder(boiler, brass, 0.044, 0.198, 0.18, 0.778, 0.012);
   cylinder(boiler, bronze, 0.079, 0.055, 0.18, 0.713, 0.012);
   const valve = new THREE.Group();
@@ -862,7 +869,7 @@ function buildBoiler(boiler, heading) {
       leaf.rotation.z = side * (0.64 - i * 0.23);
     }
   }
-  return mountBoilerGauge(boiler, heading);
+  return { gaugeNeedle: mountBoilerGauge(boiler, heading), vent, valve };
 }
 
 function buildKettle(boiler, heading) {
@@ -878,14 +885,13 @@ function buildKettle(boiler, heading) {
   }
   const crown = mesh(new THREE.SphereGeometry(0.245, 24, 12), brass, boiler, -0.035, 0.718, 0);
   crown.scale.y = 0.31;
-  cylinder(boiler, bronze, 0.046, 0.118, -0.035, 0.823, -0.046);
-  mesh(rivetGeometry, brass, boiler, -0.035, 0.887, -0.046).scale.setScalar(1.7);
+  const vent = buildBoilerVent(boiler, -0.035, 0.89, -0.078, 0.069);
   mesh(crestGeometry, inlay, boiler, -0.025, 0.508, 0.309).scale.setScalar(0.80);
   for (const z of [-0.205, 0.205]) {
     castBlock(boiler, brass, 0.11, 0.15, 0.14, 0.05, 0.199, z, 0.025);
   }
   buildBoilerOutlet(boiler);
-  return mountBoilerGauge(boiler, heading);
+  return { gaugeNeedle: mountBoilerGauge(boiler, heading), vent };
 }
 
 function buildDuplexBoiler(boiler, heading) {
@@ -903,8 +909,10 @@ function buildDuplexBoiler(boiler, heading) {
           .scale.setScalar(0.61);
       }
     }
-    cylinder(boiler, bronze, 0.043, 0.12, 0.20, 0.565, z);
-    cylinder(boiler, brass, 0.069, 0.036, 0.20, 0.634, z);
+    if (z > 0) {
+      cylinder(boiler, bronze, 0.043, 0.12, 0.20, 0.565, z);
+      cylinder(boiler, brass, 0.069, 0.036, 0.20, 0.634, z);
+    }
   }
   cylinder(boiler, bronze, 0.066, 0.44, 0.292, 0.302, 0, 'z');
   cylinder(boiler, brass, 0.089, 0.115, 0.308, 0.285, 0, 'x');
@@ -914,7 +922,8 @@ function buildDuplexBoiler(boiler, heading) {
   const instrument = new THREE.Group();
   instrument.position.y = -0.092;
   boiler.add(instrument);
-  return mountBoilerGauge(instrument, heading);
+  const vent = buildBoilerVent(boiler, 0.20, 0.66, -0.196, 0.069);
+  return { gaugeNeedle: mountBoilerGauge(instrument, heading), vent };
 }
 
 function makeGaugeFace() {
@@ -2264,6 +2273,7 @@ const vaporTextures = Array.from({ length: 5 }, (_, index) => makeVaporTexture(i
 const steamProfiles = {
   jet:   { speed: 1.72, lift: 0.28, curl: 0.23, life: 1.18, size: 0.25, growth: 0.71, opacity: 0.90 },
   vent:  { speed: 0.00, lift: 0.66, curl: 0.18, life: 1.34, size: 0.22, growth: 0.59, opacity: 0.81 },
+  boiler: { speed: 0, lift: 0.91, curl: 0.25, life: 1.13, size: 0.16, growth: 0.52, opacity: 0.86 },
   seam:  { speed: 0.76, lift: 0.33, curl: 0.19, life: 0.82, size: 0.19, growth: 0.38, opacity: 0.66 },
 };
 const particles = Array.from({ length: 112 }, () => {
@@ -2279,6 +2289,8 @@ let nextParticle = 0;
 let jetClock = 0;
 let ventClock = 0;
 let nextWisp = 0.84;
+let boilerCycle = 0;
+let boilerPuffClock = 0;
 
 function emitSteam(outlet, kind) {
   const particle = particles[nextParticle];
@@ -2288,8 +2300,8 @@ function emitSteam(outlet, kind) {
   particle.profile = profile;
   particle.age = 0;
   particle.life = profile.life * (0.89 + Math.random() * 0.26);
-  particle.dx = outlet.dx * speed;
-  particle.dz = outlet.dz * speed;
+  particle.dx = (outlet.dx ?? 0) * speed;
+  particle.dz = (outlet.dz ?? 0) * speed;
   particle.phase = Math.random() * Math.PI * 2;
   particle.twist = (Math.random() - 0.5) * 1.5;
   particle.sprite.position.set(outlet.x, outlet.y, outlet.z);
@@ -2298,7 +2310,29 @@ function emitSteam(outlet, kind) {
   particle.sprite.visible = true;
 }
 
+function animateBoiler(dt) {
+  const pressure = THREE.MathUtils.clamp(level.pressure / 100, 0, 1);
+  boilerCycle = (boilerCycle + dt * (0.34 + pressure * 0.34)) % 1;
+  const opening = THREE.MathUtils.smoothstep(boilerCycle, 0.55, 0.70)
+    * (1 - THREE.MathUtils.smoothstep(boilerCycle, 0.85, 0.99));
+  if (level.valve) {
+    const angle = pressure * 1.75 + opening * (0.30 + pressure * 0.28);
+    level.valve.rotation.z = THREE.MathUtils.damp(level.valve.rotation.z, angle, 7, dt);
+  }
+
+  if (pressure < 0.09 || opening < 0.45) {
+    boilerPuffClock = 0;
+    return;
+  }
+  boilerPuffClock -= dt;
+  if (boilerPuffClock <= 0) {
+    emitSteam(level.vent, 'boiler');
+    boilerPuffClock = THREE.MathUtils.lerp(0.105, 0.040, pressure);
+  }
+}
+
 function animateSteam(dt) {
+  animateBoiler(dt);
   const jetInterval = 0.047;
   const ventInterval = 0.089;
   jetClock += dt;
@@ -2705,6 +2739,7 @@ function clearSteamAndSelection() {
   buttons[0].click();
   nextWisp = 0.84;
   jetClock = ventClock = 0;
+  boilerCycle = boilerPuffClock = 0;
   for (const { sprite } of particles) sprite.visible = false;
 }
 
