@@ -3490,14 +3490,14 @@ lid.position.set(0, 0.77, -4.31 - rimOffset);
 lid.scale.x = 1.17;
 lid.rotation.x = -0.66;
 caseParts.add(lid);
-castBlock(lid, frame, 7.48, 2.90, 0.19, 0, 0.40, -0.056, 0.056);
-castBlock(lid, velvet, 7.23, 2.68, 0.07, 0, 0.40, 0.060, 0.021);
-for (const y of [-0.949, 1.749]) {
+castBlock(lid, frame, 7.48, 3.17, 0.19, 0, 0.535, -0.056, 0.056);
+castBlock(lid, velvet, 7.23, 2.95, 0.07, 0, 0.535, 0.060, 0.021);
+for (const y of [-0.949, 2.019]) {
   box(lid, inlay, 7.14, 0.016, 0.021, 0, y, 0.103);
 }
 for (const x of [-3.58, 3.58]) {
-  box(lid, inlay, 0.017, 2.70, 0.022, x, 0.40, 0.103);
-  for (const y of [-0.83, 1.63]) {
+  box(lid, inlay, 0.017, 2.97, 0.022, x, 0.535, 0.103);
+  for (const y of [-0.83, 1.90]) {
     const ornament = mesh(crestGeometry, brass, lid, x * 0.971, y, 0.109);
     ornament.rotation.z = Math.PI / 2 * Math.sign(x) * Math.sign(y);
     ornament.scale.setScalar(0.86);
@@ -3692,8 +3692,8 @@ tutorialMarker.add(tutorialWash);
 tutorialMarker.visible = false;
 tray.add(tutorialMarker);
 
-const titleHeight = 1.29;
-const titleStamp = engraving(lid, 3.7, 0.50, 0, titleHeight, 0.170, { italic: true, fontScale: 0.83 });
+const titleHeight = 1.20;
+const titleStamp = engraving(lid, 3.7, 0.50, 0, titleHeight, 0.181, { italic: true, fontScale: 0.83 });
 titleStamp('Steam Tycoon');
 const inHandStamp = engraving(lid, 1.85, 0.20, -2.33, 0.23, 0.127);
 const ivoryPlate = material(0xdab684, 0.22, 0.48);
@@ -3751,27 +3751,95 @@ function cartoucheFace(width, height, depth) {
   return geometry;
 }
 
-// Layered gilt molding and mirrored scrollwork around the enamel title plaque.
-mesh(cartoucheFace(4.34, 0.65, 0.016), bronze, lid, 0, titleHeight, 0.107);
-mesh(cartoucheFace(4.26, 0.60, 0.013), keyRim, lid, 0, titleHeight, 0.125);
-mesh(cartoucheFace(4.16, 0.52, 0.013), enamelBlue, lid, 0, titleHeight, 0.142);
-for (const side of [-1, 1]) {
-  const ornament = new THREE.Group();
-  ornament.position.set(side * 2.04, titleHeight, 0.125);
-  ornament.scale.x = side;
-  lid.add(ornament);
-  const scroll = new THREE.CurvePath();
-  const point = (x, y) => new THREE.Vector3(x, y, 0);
-  scroll.add(new THREE.CubicBezierCurve3(point(0, 0.09), point(0.36, 0.47), point(0.35, -0.37), point(0.80, -0.16)));
-  scroll.add(new THREE.CubicBezierCurve3(point(0.80, -0.16), point(1.12, -0.01), point(0.83, 0.31), point(0.70, 0.12)));
-  scroll.add(new THREE.CubicBezierCurve3(point(0.70, 0.12), point(0.62, 0.01), point(0.75, -0.045), point(0.78, 0.044)));
-  mesh(new THREE.TubeGeometry(scroll, 48, 0.018, 8), keyRim, ornament);
-  const leaf = mesh(crestGeometry, keyRim, ornament, 0.38, 0.16, 0);
-  leaf.rotation.z = -0.72;
-  leaf.scale.setScalar(0.69);
+// Double gilt molding around the dark enamel title plaque.
+mesh(cartoucheFace(4.34, 0.63, 0.016), bronze, lid, 0, titleHeight, 0.107);
+mesh(cartoucheFace(4.28, 0.59, 0.013), keyRim, lid, 0, titleHeight, 0.125);
+mesh(cartoucheFace(4.20, 0.53, 0.013), bronze, lid, 0, titleHeight, 0.142);
+mesh(cartoucheFace(4.15, 0.49, 0.010), enamelBlue, lid, 0, titleHeight, 0.151);
+
+function decorateTitle() {
+  // Cast sun and mirrored laurel sprays sit proud of the velvet and catch the light when the box turns.
+  const sun = new THREE.Group();
+  sun.position.set(0, 1.674, 0.117);
+  lid.add(sun);
+  const ray = new THREE.Shape().moveTo(0, -0.030)
+    .quadraticCurveTo(0.46, -0.017, 1, 0)
+    .quadraticCurveTo(0.46, 0.017, 0, 0.030).closePath();
+  const rayGeometry = new THREE.ExtrudeGeometry(ray, {
+    depth: 0.009, bevelSize: 0.006, bevelThickness: 0.008, bevelSegments: 2,
+  });
+  const rayCount = 32;
+  for (let i = 0; i < rayCount; i++) {
+    const angle = i * Math.PI * 2 / rayCount;
+    const length = 1 / Math.hypot(Math.cos(angle) / 1.53, Math.sin(angle) / 0.326);
+    const radius = 0.115;
+    const flare = mesh(rayGeometry, i % 2 === 0 ? keyRim : inlay, sun,
+      Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+    flare.scale.x = (length - radius) * (i % 2 === 0 ? 1 : 0.77);
+    flare.rotation.z = angle;
+  }
+  cylinder(sun, bronze, 0.179, 0.041, 0, 0, 0.018, 'z');
+  mesh(new THREE.TorusGeometry(0.166, 0.013, 8, 36), keyRim, sun, 0, 0, 0.046);
+  const relief = new THREE.SphereGeometry(1, 20, 12);
+  const castDetail = (finish, x, y, z, width, height, depth) =>
+    mesh(relief, finish, sun, x, y, z).scale.set(width, height, depth);
+  castDetail(keyRim, 0, -0.006, 0.049, 0.111, 0.135, 0.049);
+  for (const side of [-1, 1]) {
+    castDetail(brass, side * 0.064, -0.018, 0.088, 0.039, 0.038, 0.017);
+    castDetail(bronze, side * 0.040, 0.026, 0.099, 0.029, 0.009, 0.008);
+    castDetail(keyRim, side * 0.041, 0.041, 0.099, 0.034, 0.011, 0.010);
+  }
+  castDetail(brass, 0, -0.005, 0.101, 0.017, 0.037, 0.020);
+  castDetail(bronze, 0, -0.056, 0.093, 0.030, 0.008, 0.008);
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.PI * 2 * i / 12;
+    const curl = mesh(relief, brass, sun, 0.116 * Math.cos(angle), 0.126 * Math.sin(angle), 0.064);
+    curl.rotation.z = angle + 0.56;
+    curl.scale.set(0.034, 0.020, 0.027);
+  }
+
+  const leafShape = new THREE.Shape().moveTo(0, 0)
+    .quadraticCurveTo(0.118, 0.108, 0.28, 0.015)
+    .quadraticCurveTo(0.133, -0.062, 0, 0).closePath();
+  const leafGeometry = new THREE.ExtrudeGeometry(leafShape, {
+    depth: 0.012, bevelSize: 0.011, bevelThickness: 0.009, bevelSegments: 2, curveSegments: 8,
+  });
+  const leafVein = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(0.025, 0.004, 0.023),
+    new THREE.Vector3(0.130, 0.023, 0.023),
+    new THREE.Vector3(0.252, 0.016, 0.023),
+  ), 12, 0.0035, 6);
+  const stemPoint = (x, y) => new THREE.Vector3(x, y, 0);
+  const stem = new THREE.CurvePath();
+  stem.add(new THREE.CubicBezierCurve3(stemPoint(0.10, 0.46), stemPoint(0.35, 0.42),
+    stemPoint(0.55, -0.23), stemPoint(1.04, -0.22)));
+  stem.add(new THREE.CubicBezierCurve3(stemPoint(1.04, -0.22), stemPoint(1.55, -0.19),
+    stemPoint(1.42, 0.29), stemPoint(1.20, 0.17)));
+  stem.add(new THREE.CubicBezierCurve3(stemPoint(1.20, 0.17), stemPoint(1.05, 0.085),
+    stemPoint(1.21, -0.055), stemPoint(1.28, 0.034)));
+  const stemGeometry = new THREE.TubeGeometry(stem, 50, 0.016, 8);
+  for (const side of [-1, 1]) {
+    const spray = new THREE.Group();
+    spray.position.set(side * 2.04, 1.19, 0.130);
+    spray.scale.x = side;
+    lid.add(spray);
+    mesh(stemGeometry, keyRim, spray);
+    for (const [x, y, angle, scale] of [
+      [0.12, 0.453, 2.25, 1.02], [0.22, 0.385, 1.52, 0.97], [0.27, 0.327, 2.98, 0.97],
+      [0.33, 0.241, 1.11, 1.14], [0.40, 0.144, 2.86, 1.10], [0.46, 0.057, 0.76, 1.13],
+      [0.55, -0.037, 3.01, 0.88], [0.64, -0.112, 0.59, 1.04], [0.76, -0.172, -2.59, 0.85],
+    ]) {
+      const leaf = new THREE.Group();
+      leaf.position.set(x, y, 0.007);
+      leaf.rotation.z = angle;
+      leaf.scale.setScalar(scale);
+      spray.add(leaf);
+      mesh(leafGeometry, keyRim, leaf);
+      mesh(leafVein, bronze, leaf);
+    }
+  }
 }
-const crown = mesh(crestGeometry, keyRim, lid, 0, 1.65, 0.161);
-crown.scale.setScalar(1.05);
+decorateTitle();
 
 function castKey(x, y, width, label, invoke, disabled = () => false, pressed = () => false, height = 0.323) {
   const group = new THREE.Group();
