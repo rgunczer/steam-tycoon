@@ -2331,8 +2331,8 @@ function animateBoiler(dt) {
   }
 }
 
-function animateSteam(dt) {
-  animateBoiler(dt);
+function animateSteam(dt, elapsed) {
+  animateBoiler(Math.min(elapsed, 0.20));
   const jetInterval = 0.047;
   const ventInterval = 0.089;
   jetClock += dt;
@@ -3186,6 +3186,6 @@ renderer.setAnimationLoop(now => {
   animateSnap(dt);
   animateGauge(elapsed);
   updateCaseLid();
-  if (coverState === 'open') animateSteam(dt);
+  if (coverState === 'open') animateSteam(dt, elapsed);
   renderer.render(scene, camera);
 });
