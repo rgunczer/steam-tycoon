@@ -651,8 +651,9 @@ let viewZoom = 1;
 let inspectingLid = false;
 function aimCamera() {
   if (inspectingLid) {
-    camera.position.set(0, 4.25, -0.55);
-    camera.lookAt(0, 1.1, -5.21);
+    const center = lid.localToWorld(new THREE.Vector3(0, 0.8, 0.10));
+    camera.position.copy(lid.localToWorld(new THREE.Vector3(0, 0.8, 7.3)));
+    camera.lookAt(center);
     camera.updateMatrixWorld();
     return;
   }
@@ -3212,11 +3213,9 @@ function resize() {
       top = Math.max(top, y);
     }
   };
-  if (lid.visible) fitCorners(lidBounds);
-  if (coverHinge.visible && !inspectingLid) {
-    coverHinge.updateMatrixWorld();
-    for (const leaf of coverLeaves) fitCorners(coverBounds, leaf.matrixWorld);
-  }
+  coverHinge.updateMatrixWorld(true);
+  if (inspectingLid) fitCorners(lidBounds, lid.matrixWorld);
+  else fitCorners(coverBounds, coverHinge.matrixWorld);
   if (!inspectingLid) {
     fitCorners(boardBounds, tray.matrixWorld);
     if (level.group.visible) fitCorners(level.fixtureBounds, tray.matrixWorld);
@@ -3431,7 +3430,7 @@ function selectLevel(index) {
   const firstVisit = !boards[index];
   boards[index] ??= buildLevel(levels[index]);
   level = boards[index];
-  level.group.visible = coverState === 'open';
+  level.group.visible = true;
   viewTurns = 0;
   overhead = false;
   resetOrbit();
@@ -3487,12 +3486,17 @@ drawerDiscovered = progress.drawerDiscovered;
 if (drawerDiscovered) drawerLabel.textContent = 'Open pipe rack';
 const savedIndex = levels.findIndex(({ name }) => name === progress.board);
 levelSelect.value = String(progress.opened && savedIndex !== -1 ? savedIndex : tutorialIndex);
+const lidDepth = 3.40;
+const lidSpan = boxWidth + 0.21;
+const openLidAngle = -0.88;
+const coverHinge = new THREE.Group();
+coverHinge.position.set(0, 0.13, -lidSpan / 2);
+caseParts.add(coverHinge);
+
 const lid = new THREE.Group();
-lid.visible = coverState === 'open';
-lid.position.set(0, 0.77, -4.31 - rimOffset);
-lid.scale.x = 1.17;
-lid.rotation.x = -0.66;
-caseParts.add(lid);
+lid.position.set(0, 4.72, -lidDepth + 0.30);
+lid.scale.x = 1.09;
+coverHinge.add(lid);
 castBlock(lid, frame, 7.48, 3.70, 0.19, 0, 0.80, -0.056, 0.056);
 castBlock(lid, velvet, 7.23, 3.48, 0.07, 0, 0.80, 0.060, 0.021);
 for (const y of [-0.949, 2.549]) {
@@ -3504,12 +3508,6 @@ for (const x of [-3.58, 3.58]) {
   ornament.rotation.z = -Math.PI / 2 * Math.sign(x);
   ornament.scale.setScalar(0.86);
 }
-for (const x of [-2.60, 2.60]) {
-  const hinge = cylinder(lid, bronze, 0.081, 0.38, x, -1.021, 0.026, 'x');
-  hinge.castShadow = false;
-  castBlock(caseParts, frame, 0.23, 0.87, 0.17, x * lid.scale.x, -0.43, -3.72 - rimOffset, 0.044);
-}
-
 function engraving(parent, width, height, x, y, z, options = {}) {
   const { color = '#f4d8a5', italic = false, fontScale = 0.68 } = options;
   const canvas = document.createElement('canvas');
@@ -3539,41 +3537,58 @@ function engraving(parent, width, height, x, y, z, options = {}) {
   };
 }
 
-const coverHinge = new THREE.Group();
-coverHinge.position.set(0, 0.10, -3.73 - rimOffset);
-scene.add(coverHinge);
-const leafLength = (boxWidth + 0.18) / 3;
-const coverLeaves = [coverHinge, new THREE.Group(), new THREE.Group()];
-for (let i = 1; i < coverLeaves.length; i++) {
-  const parent = coverLeaves[i - 1];
-  const leaf = coverLeaves[i];
-  leaf.position.z = leafLength;
-  parent.add(leaf);
-}
-for (const [i, leaf] of coverLeaves.entries()) {
-  const middle = leafLength / 2;
-  castBlock(leaf, frame, boxWidth + 0.21, 0.139, leafLength - 0.020, 0, 0, middle, 0.036);
-  for (const x of [-4.16, 4.16]) {
-    box(leaf, inlay, 0.020, 0.012, leafLength - 0.052, x, 0.073, middle);
-  }
-  for (const x of [-2.52, 2.52]) {
-    const hinge = cylinder(leaf, bronze, 0.053, 0.36, x, 0.067, 0.027, 'x');
-    hinge.castShadow = false;
-  }
-  if (i === 0 || i === 2) {
-    const z = i === 0 ? 0.125 : leafLength - 0.125;
-    box(leaf, inlay, boxWidth - 0.25, 0.012, 0.022, 0, 0.073, z);
-    for (const x of [-4.07, 4.07]) {
-      const corner = mesh(crestGeometry, inlay, leaf, x, 0.082, z);
-      corner.rotation.x = -Math.PI / 2;
-      corner.scale.setScalar(1.13);
+function buildLidShell() {
+  const width = boxWidth + 0.23;
+  const insideZ = -lidDepth + 0.135;
+  const mid = lidSpan / 2;
+  castBlock(coverHinge, frame, width, lidSpan, 0.23, 0, mid, -lidDepth, 0.068);
+  castBlock(coverHinge, velvet, width - 0.48, lidSpan - 0.42, 0.08, 0, mid, insideZ, 0.034);
+  for (const side of [-1, 1]) {
+    const x = side * (width / 2 - 0.117);
+    castBlock(coverHinge, frame, 0.245, lidSpan, lidDepth, x, mid, -lidDepth / 2, 0.044);
+    castBlock(coverHinge, bronze, 0.040, lidSpan - 0.18, 0.039, x, mid, -0.027, 0.010);
+    box(coverHinge, inlay, 0.019, lidSpan - 0.36, 0.030, x - side * 0.09, mid, -lidDepth - 0.125);
+
+    const edge = side < 0 ? 0.115 : lidSpan - 0.115;
+    castBlock(coverHinge, frame, width - 0.41, 0.25, lidDepth, 0, edge, -lidDepth / 2, 0.045);
+    castBlock(coverHinge, bronze, width - 0.25, 0.047, 0.043, 0, edge, -0.027, 0.012);
+    box(coverHinge, inlay, width - 0.37, 0.020, 0.028, 0, edge + (side < 0 ? 0.08 : -0.08), -lidDepth - 0.125);
+    for (const hand of [-1, 1]) {
+      const badge = mesh(crestGeometry, inlay, coverHinge, hand * (width / 2 - 0.34),
+        edge + (side < 0 ? 0.18 : -0.18), -lidDepth - 0.135);
+      badge.rotation.set(0, Math.PI, side * hand * Math.PI / 2);
     }
   }
+
+  // Brass hinge barrels stay on the rear rim throughout the swing.
+  for (const x of [-2.72, 2.72]) {
+    cylinder(caseParts, bronze, 0.116, 0.72, x, coverHinge.position.y, coverHinge.position.z, 'x');
+    castBlock(caseParts, bronze, 0.43, 0.36, 0.075, x, -0.028, coverHinge.position.z - 0.058, 0.023);
+    castBlock(coverHinge, brass, 0.41, 0.51, 0.075, x, 0.31, -0.049, 0.019);
+    for (const dx of [-0.12, 0.12]) {
+      mesh(rivetGeometry, bronze, coverHinge, x + dx, 0.45, 0.001);
+    }
+  }
+
+  // A maker's seal sits below the recessed instrument panel.
+  const seal = new THREE.Group();
+  seal.position.set(0, 2.15, insideZ + 0.067);
+  coverHinge.add(seal);
+  cylinder(seal, bronze, 0.42, 0.085, 0, 0, 0, 'z');
+  mesh(new THREE.TorusGeometry(0.346, 0.017, 8, 44), brass, seal, 0, 0, 0.049);
+  const crest = mesh(crestGeometry, inlay, seal, 0, 0, 0.053);
+  crest.scale.setScalar(2.55);
+  for (const x of [-2.06, 2.06]) {
+    castBlock(coverHinge, frame, 2.57, 0.045, 0.090, x, 2.15, insideZ + 0.070, 0.012);
+    box(coverHinge, inlay, 2.43, 0.013, 0.016, x, 2.15, insideZ + 0.122);
+  }
 }
+buildLidShell();
+
 const coverCartouche = new THREE.Group();
-coverCartouche.position.set(0, 0.097, leafLength / 2);
-coverCartouche.rotation.x = -Math.PI / 2;
-coverLeaves[1].add(coverCartouche);
+coverCartouche.position.set(0, lidSpan / 2, -lidDepth - 0.136);
+coverCartouche.rotation.x = Math.PI;
+coverHinge.add(coverCartouche);
 castBlock(coverCartouche, bronze, 3.15, 0.79, 0.035, 0, 0, 0.012, 0.013);
 castBlock(coverCartouche, enamelBlue, 3.05, 0.69, 0.032, 0, 0, 0.035, 0.011);
 mesh(crestGeometry, brass, coverCartouche, -1.20, 0, 0.056).scale.setScalar(1.25);
@@ -3589,9 +3604,9 @@ dedication.visible = false;
 const ward = mesh(new THREE.TorusGeometry(0.144, 0.018, 8, 32), brass, coverCartouche, 1.26, 0, 0.063);
 mesh(crestGeometry, brass, ward, 0, 0, 0.018).scale.setScalar(0.72);
 const coverLock = new THREE.Group();
-coverLock.position.set(0, 0.113, leafLength - 0.31);
-coverLock.rotation.x = -Math.PI / 2;
-coverLeaves[2].add(coverLock);
+coverLock.position.set(0, lidSpan - 0.50, -lidDepth - 0.137);
+coverLock.rotation.x = Math.PI;
+coverHinge.add(coverLock);
 castBlock(coverLock, bronze, 1.92, 0.341, 0.063, 0.06, 0, 0, 0.025);
 castBlock(coverLock, brass, 1.81, 0.284, 0.042, 0.06, 0, 0.039, 0.016);
 const coverKnob = new THREE.Group();
@@ -3601,22 +3616,17 @@ cylinder(coverKnob, bronze, 0.112, 0.055, 0, 0, 0, 'z');
 castBlock(coverKnob, brass, 0.156, 0.051, 0.032, 0, 0, 0.04, 0.014);
 const coverHint = engraving(coverLock, 1.22, 0.202, 0.211, 0, 0.064, { color: '#2c2018' });
 const coverBounds = boxCorners({
-  min: new THREE.Vector3(-3.75 - rimOffset, -0.076, -0.020),
-  max: new THREE.Vector3(3.75 + rimOffset, 0.28, leafLength + 0.025),
+  min: new THREE.Vector3(-4.44, -0.14, -lidDepth - 0.28),
+  max: new THREE.Vector3(4.44, lidSpan + 0.035, 0.045),
 });
-let claspTravel = 0;
+let claspTravel = coverState === 'open' ? 1 : 0;
 let revealChimed = false;
 let unfolding = coverState === 'open' ? 1 : 0;
 const boardHelp = stage.getAttribute('aria-label');
 
 function poseCover() {
-  const rear = THREE.MathUtils.smoothstep(unfolding, 0, 0.94);
-  const fold = THREE.MathUtils.smoothstep(unfolding, 0.13, 1);
-  const tuck = THREE.MathUtils.smoothstep(unfolding, 0.69, 1);
-  coverHinge.position.set(0, 0.10 - 0.36 * tuck, -3.73 - rimOffset - 0.79 * tuck);
-  coverLeaves[0].rotation.x = -2.69 * rear;
-  coverLeaves[1].rotation.x = 3.01 * fold;
-  coverLeaves[2].rotation.x = -3.03 * fold;
+  const swing = THREE.MathUtils.smoothstep(unfolding, 0, 1);
+  coverHinge.rotation.x = THREE.MathUtils.lerp(Math.PI / 2, openLidAngle, swing);
   const released = THREE.MathUtils.smoothstep(claspTravel, 0, 1);
   coverKnob.rotation.z = released * Math.PI / 2;
   ward.rotation.z = released * Math.PI;
@@ -3665,8 +3675,6 @@ function animateCover(elapsed) {
     revealChimed = true;
     playSound('chime');
   }
-  if (unfolding >= 0.65) level.group.visible = true;
-  if (unfolding >= 0.82) lid.visible = true;
   if (unfolding === 1) {
     coverState = 'open';
     progress.opened = true;
@@ -3833,7 +3841,10 @@ for (const [i, [label, button, pressed, invoke, disabled]] of keyActions.entries
     invoke ?? (() => button.click()), disabled ?? (() => button.disabled), pressed, 0.233);
 }
 
-const lidBounds = boxCorners(new THREE.Box3().setFromObject(lid));
+const lidBounds = boxCorners({
+  min: new THREE.Vector3(-3.77, -1.07, -0.16),
+  max: new THREE.Vector3(3.77, 2.68, 0.24),
+});
 
 function updateCaseLid() {
   const number = Number(levelSelect.value) + 1;
