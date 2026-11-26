@@ -3492,18 +3492,16 @@ lid.position.set(0, 0.77, -4.31 - rimOffset);
 lid.scale.x = 1.17;
 lid.rotation.x = -0.66;
 caseParts.add(lid);
-castBlock(lid, frame, 7.48, 3.17, 0.19, 0, 0.535, -0.056, 0.056);
-castBlock(lid, velvet, 7.23, 2.95, 0.07, 0, 0.535, 0.060, 0.021);
-for (const y of [-0.949, 2.019]) {
+castBlock(lid, frame, 7.48, 3.70, 0.19, 0, 0.80, -0.056, 0.056);
+castBlock(lid, velvet, 7.23, 3.48, 0.07, 0, 0.80, 0.060, 0.021);
+for (const y of [-0.949, 2.549]) {
   box(lid, inlay, 7.14, 0.016, 0.021, 0, y, 0.103);
 }
 for (const x of [-3.58, 3.58]) {
-  box(lid, inlay, 0.017, 2.97, 0.022, x, 0.535, 0.103);
-  for (const y of [-0.83, 1.90]) {
-    const ornament = mesh(crestGeometry, brass, lid, x * 0.971, y, 0.109);
-    ornament.rotation.z = Math.PI / 2 * Math.sign(x) * Math.sign(y);
-    ornament.scale.setScalar(0.86);
-  }
+  box(lid, inlay, 0.017, 3.50, 0.022, x, 0.80, 0.103);
+  const ornament = mesh(crestGeometry, brass, lid, x * 0.971, -0.83, 0.109);
+  ornament.rotation.z = -Math.PI / 2 * Math.sign(x);
+  ornament.scale.setScalar(0.86);
 }
 for (const x of [-2.60, 2.60]) {
   const hinge = cylinder(lid, bronze, 0.081, 0.38, x, -1.021, 0.026, 'x');
@@ -3694,9 +3692,18 @@ tutorialMarker.add(tutorialWash);
 tutorialMarker.visible = false;
 tray.add(tutorialMarker);
 
-const titleHeight = 1.20;
-const titleStamp = engraving(lid, 3.7, 0.50, 0, titleHeight, 0.181, { italic: true, fontScale: 0.77 });
-titleStamp('Steam Tycoon');
+const textureLoader = new THREE.TextureLoader();
+const titleColor = textureLoader.load(new URL('./assets/versailles-title.webp', import.meta.url).href);
+titleColor.colorSpace = THREE.SRGBColorSpace;
+titleColor.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const titleRelief = textureLoader.load(new URL('./assets/versailles-relief.webp', import.meta.url).href);
+titleRelief.anisotropy = titleColor.anisotropy;
+const titleFinish = new THREE.MeshStandardMaterial({
+  map: titleColor, bumpMap: titleRelief, bumpScale: 0.024, roughness: 0.61, metalness: 0.10,
+});
+const titlePanel = mesh(new THREE.PlaneGeometry(7.06, 1.565), titleFinish, lid, 0, 1.770, 0.105);
+titlePanel.castShadow = false;
+
 const inHandStamp = engraving(lid, 1.85, 0.20, -2.33, 0.23, 0.127);
 const ivoryPlate = material(0xdab684, 0.22, 0.48);
 castBlock(lid, bronze, 2.91, 0.415, 0.061, 0, 0.63, 0.116, 0.019);
@@ -3752,108 +3759,6 @@ function cartoucheFace(width, height, depth) {
   keySettings.set(dimensions, geometry);
   return geometry;
 }
-
-// Double gilt molding around the dark enamel title plaque.
-mesh(cartoucheFace(4.34, 0.63, 0.016), bronze, lid, 0, titleHeight, 0.107);
-mesh(cartoucheFace(4.28, 0.59, 0.013), keyRim, lid, 0, titleHeight, 0.125);
-mesh(cartoucheFace(4.20, 0.53, 0.013), bronze, lid, 0, titleHeight, 0.142);
-mesh(cartoucheFace(4.15, 0.49, 0.010), enamelBlue, lid, 0, titleHeight, 0.151);
-
-function decorateTitle() {
-  // Cast sun and mirrored laurel sprays sit proud of the velvet and catch the light when the box turns.
-  const sun = new THREE.Group();
-  sun.position.set(0, 1.722, 0.133);
-  lid.add(sun);
-
-  // A short crown of fluted rays, with a wider sweep toward the shoulders of the plaque.
-  const ray = new THREE.Shape().moveTo(0, -0.020)
-    .bezierCurveTo(0.37, -0.049, 0.73, -0.032, 0.96, -0.007)
-    .quadraticCurveTo(1.01, 0.004, 0.96, 0.014)
-    .bezierCurveTo(0.70, 0.042, 0.28, 0.031, 0, 0.014).closePath();
-  const rayGeometry = new THREE.ExtrudeGeometry(ray, {
-    depth: 0.009, bevelSize: 0.009, bevelThickness: 0.012, bevelSegments: 3, curveSegments: 10,
-  });
-  const rayCount = 20;
-  for (let i = 0; i < rayCount; i++) {
-    const angle = i * Math.PI * 2 / rayCount;
-    const radius = 0.171;
-    const rim = 1 / Math.hypot(Math.cos(angle) / 0.69, Math.sin(angle) / 0.27);
-    const flare = mesh(rayGeometry, keyRim, sun, Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
-    flare.scale.set((rim - radius) * (i % 2 === 0 ? 1 : 0.78), 1, 1);
-    flare.rotation.z = angle;
-  }
-
-  // A classical profile in coin relief gives the medallion one continuous silhouette.
-  cylinder(sun, bronze, 0.194, 0.038, 0, 0, 0.016, 'z');
-  cylinder(sun, inlay, 0.174, 0.017, 0, 0, 0.037, 'z');
-  mesh(new THREE.TorusGeometry(0.180, 0.010, 10, 48), keyRim, sun, 0, 0, 0.045);
-  const profile = new THREE.Shape().moveTo(-0.10, -0.098)
-    .quadraticCurveTo(-0.047, -0.073, -0.056, -0.024)
-    .bezierCurveTo(-0.111, 0.021, -0.089, 0.113, -0.025, 0.127)
-    .bezierCurveTo(0.014, 0.134, 0.048, 0.106, 0.049, 0.067)
-    .quadraticCurveTo(0.053, 0.039, 0.077, 0.018)
-    .quadraticCurveTo(0.087, 0.004, 0.059, -0.001)
-    .lineTo(0.063, -0.018).lineTo(0.056, -0.029)
-    .quadraticCurveTo(0.067, -0.057, 0.036, -0.063)
-    .quadraticCurveTo(0.008, -0.063, 0.014, -0.091)
-    .quadraticCurveTo(0.037, -0.109, 0.075, -0.113)
-    .quadraticCurveTo(0.025, -0.145, -0.10, -0.098).closePath();
-  const profileGeometry = new THREE.ExtrudeGeometry(profile, {
-    depth: 0.012, bevelSize: 0.008, bevelThickness: 0.013, bevelSegments: 4, curveSegments: 14,
-  });
-  mesh(profileGeometry, keyRim, sun, 0, 0, 0.054);
-  function chaseLine(from, through, to, radius) {
-    const curve = new THREE.QuadraticBezierCurve3(...[from, through, to].map(
-      ([x, y]) => new THREE.Vector3(x, y, 0.078),
-    ));
-    mesh(new THREE.TubeGeometry(curve, 12, radius, 6), bronze, sun);
-  }
-  chaseLine([0.024, 0.046], [0.035, 0.051], [0.046, 0.044], 0.0036);
-  chaseLine([-0.071, 0.038], [-0.052, 0.091], [0.028, 0.096], 0.0046);
-  chaseLine([-0.064, 0.015], [-0.049, 0.066], [0.006, 0.077], 0.0039);
-
-  const leafShape = new THREE.Shape().moveTo(0, 0)
-    .bezierCurveTo(0.055, 0.065, 0.172, 0.078, 0.265, 0.016)
-    .bezierCurveTo(0.17, 0.005, 0.097, -0.057, 0, 0).closePath();
-  const leafGeometry = new THREE.ExtrudeGeometry(leafShape, {
-    depth: 0.008, bevelSize: 0.013, bevelThickness: 0.016, bevelSegments: 4, curveSegments: 10,
-  });
-  const leafVein = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(0.020, 0.002, 0.023),
-    new THREE.Vector3(0.120, 0.015, 0.027),
-    new THREE.Vector3(0.221, 0.019, 0.022),
-  ), 12, 0.0031, 6);
-  const stemPoint = (x, y) => new THREE.Vector3(x, y, 0);
-  const stem = new THREE.CurvePath();
-  stem.add(new THREE.CubicBezierCurve3(stemPoint(0.10, 0.46), stemPoint(0.35, 0.42),
-    stemPoint(0.55, -0.23), stemPoint(1.04, -0.22)));
-  stem.add(new THREE.CubicBezierCurve3(stemPoint(1.04, -0.22), stemPoint(1.55, -0.19),
-    stemPoint(1.42, 0.29), stemPoint(1.20, 0.17)));
-  stem.add(new THREE.CubicBezierCurve3(stemPoint(1.20, 0.17), stemPoint(1.05, 0.085),
-    stemPoint(1.21, -0.055), stemPoint(1.28, 0.034)));
-  const stemGeometry = new THREE.TubeGeometry(stem, 50, 0.016, 8);
-  for (const side of [-1, 1]) {
-    const spray = new THREE.Group();
-    spray.position.set(side * 2.04, 1.19, 0.130);
-    spray.scale.x = side;
-    lid.add(spray);
-    mesh(stemGeometry, keyRim, spray);
-    for (const [x, y, angle, scale] of [
-      [0.12, 0.453, 2.25, 1.02], [0.22, 0.385, 1.52, 0.97], [0.27, 0.327, 2.98, 0.97],
-      [0.33, 0.241, 1.11, 1.14], [0.40, 0.144, 2.86, 1.10], [0.46, 0.057, 0.76, 1.13],
-      [0.55, -0.037, 3.01, 0.88], [0.64, -0.112, 0.59, 1.04], [0.76, -0.172, -2.59, 0.85],
-    ]) {
-      const leaf = new THREE.Group();
-      leaf.position.set(x, y, 0.007);
-      leaf.rotation.z = angle;
-      leaf.scale.setScalar(scale);
-      spray.add(leaf);
-      mesh(leafGeometry, keyRim, leaf);
-      mesh(leafVein, inlay, leaf);
-    }
-  }
-}
-decorateTitle();
 
 function castKey(x, y, width, label, invoke, disabled = () => false, pressed = () => false, height = 0.323) {
   const group = new THREE.Group();
