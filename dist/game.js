@@ -2284,8 +2284,14 @@ function pick(event) {
   raycaster.setFromCamera(pointer, camera);
   if (coverState !== 'open') {
     if (coverState === 'opening') return null;
-    const target = coverState === 'locked' ? coverLock : coverHinge;
-    return raycaster.intersectObject(target).length ? { cover: true } : null;
+    const hit = raycaster.intersectObject(cover)[0];
+    if (!hit) return null;
+    if (coverState === 'unlatched') return { cover: true };
+    for (let object = hit.object; object !== cover; object = object.parent) {
+      const index = object.userData.coverLock;
+      if (index !== undefined) return locks[index].released ? null : { cover: true, lock: index };
+    }
+    return null;
   }
   const fixtureHit = inspectingLid ? null : raycaster.intersectObjects(level.group.children)[0];
   const tileHit = inspectingLid ? null : raycaster.intersectObjects(tiles)[0];
@@ -2401,7 +2407,7 @@ renderer.domElement.addEventListener('click', event => {
     return;
   }
   const hit = pick(event);
-  if (hit?.cover) advanceCover();
+  if (hit?.cover) advanceCover(hit.lock);
   else if (hit?.control) {
     touchPreview = null;
     highlight.visible = false;
@@ -3151,6 +3157,7 @@ function animateGauge(elapsed) {
   const sweep = -120 + 2.4 * THREE.MathUtils.clamp(level.pressure, -3, 103);
   level.gaugeNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter);
   lidNeedle.rotation.z = -THREE.MathUtils.degToRad(sweep + flutter * 0.25);
+  fasciaNeedle.rotation.z = lidNeedle.rotation.z;
   pressureHand.style.transform = `rotate(${(sweep + flutter * 0.19).toFixed(2)}deg)`;
 }
 
@@ -3213,9 +3220,12 @@ function resize() {
       top = Math.max(top, y);
     }
   };
-  coverHinge.updateMatrixWorld(true);
-  if (inspectingLid) fitCorners(lidBounds, lid.matrixWorld);
-  else fitCorners(coverBounds, coverHinge.matrixWorld);
+  if (cover.parent && coverState !== 'opening') {
+    cover.updateWorldMatrix(true, false);
+    fitCorners(coverBounds, cover.matrixWorld);
+  }
+  lid.updateWorldMatrix(true, false);
+  if (coverState === 'open' || coverState === 'opening') fitCorners(lidBounds, lid.matrixWorld);
   if (!inspectingLid) {
     fitCorners(boardBounds, tray.matrixWorld);
     if (level.group.visible) fitCorners(level.fixtureBounds, tray.matrixWorld);
@@ -3309,8 +3319,7 @@ function readProgress() {
   return {
     boardSize: size,
     board: saved?.board,
-    opened: saved?.opened === true || (saved?.opened === undefined &&
-      levels.some(({ name, tutorial }) => !tutorial && name === saved?.board)),
+    liftOffSeen: saved?.liftOffSeen === true,
     drawerDiscovered: saved?.drawerDiscovered === true,
     boards: knownBoards,
   };
@@ -3319,7 +3328,7 @@ function readProgress() {
 const progress = readProgress();
 const tutorialIndex = levels.findIndex(board => board.tutorial);
 const scoredBoards = levels.length - 1;
-let coverState = progress.opened ? 'open' : 'locked';
+let coverState = progress.liftOffSeen ? 'open' : 'locked';
 const levelSelect = document.querySelector('#level');
 const ledgerCount = document.querySelector('#ledger-count');
 const boardOptions = [...levelSelect.options].map(option => ({ option, label: option.textContent.trim() }));
@@ -3337,7 +3346,7 @@ function updateLedger() {
 }
 
 function recordProgress() {
-  progress.board = level.name;
+  if (coverState === 'open') progress.board = level.name;
   progress.drawerDiscovered = drawerDiscovered;
   const pipes = [...level.pipes].flatMap(([index, pipe]) =>
     pipe.fixed ? [] : [[index, pipe.type, pipe.rotation]]);
@@ -3485,18 +3494,21 @@ document.querySelector('#reset').addEventListener('click', () => {
 drawerDiscovered = progress.drawerDiscovered;
 if (drawerDiscovered) drawerLabel.textContent = 'Open pipe rack';
 const savedIndex = levels.findIndex(({ name }) => name === progress.board);
-levelSelect.value = String(progress.opened && savedIndex !== -1 ? savedIndex : tutorialIndex);
+levelSelect.value = String(coverState === 'open' && savedIndex !== -1 ? savedIndex : tutorialIndex);
 const lidDepth = 3.40;
 const lidSpan = boxWidth + 0.21;
-const openLidAngle = -0.88;
-const coverHinge = new THREE.Group();
-coverHinge.position.set(0, 0.13, -lidSpan / 2);
-caseParts.add(coverHinge);
+const cover = new THREE.Group();
+cover.position.y = 0.13;
+if (coverState !== 'open') caseParts.add(cover);
 
 const lid = new THREE.Group();
-lid.position.set(0, 4.72, -lidDepth + 0.30);
-lid.scale.x = 1.09;
-coverHinge.add(lid);
+lid.position.set(0, 0.32, -4.92);
+lid.scale.set(1.10, 0.70, 1);
+lid.rotation.x = -0.91;
+caseParts.add(lid);
+for (const x of [-3.18, 3.18]) {
+  castBlock(caseParts, frame, 0.54, 1.64, 1.30, x, -0.57, -4.58, 0.064);
+}
 castBlock(lid, frame, 7.48, 3.70, 0.19, 0, 0.80, -0.056, 0.056);
 castBlock(lid, velvet, 7.23, 3.48, 0.07, 0, 0.80, 0.060, 0.021);
 for (const y of [-0.949, 2.549]) {
@@ -3537,152 +3549,148 @@ function engraving(parent, width, height, x, y, z, options = {}) {
   };
 }
 
-function buildLidShell() {
-  const width = boxWidth + 0.23;
-  const insideZ = -lidDepth + 0.135;
-  const mid = lidSpan / 2;
-  castBlock(coverHinge, frame, width, lidSpan, 0.23, 0, mid, -lidDepth, 0.068);
-  castBlock(coverHinge, velvet, width - 0.48, lidSpan - 0.42, 0.08, 0, mid, insideZ, 0.034);
-  for (const side of [-1, 1]) {
-    const x = side * (width / 2 - 0.117);
-    castBlock(coverHinge, frame, 0.245, lidSpan, lidDepth, x, mid, -lidDepth / 2, 0.044);
-    castBlock(coverHinge, bronze, 0.040, lidSpan - 0.18, 0.039, x, mid, -0.027, 0.010);
-    box(coverHinge, inlay, 0.019, lidSpan - 0.36, 0.030, x - side * 0.09, mid, -lidDepth - 0.125);
-
-    const edge = side < 0 ? 0.115 : lidSpan - 0.115;
-    castBlock(coverHinge, frame, width - 0.41, 0.25, lidDepth, 0, edge, -lidDepth / 2, 0.045);
-    castBlock(coverHinge, bronze, width - 0.25, 0.047, 0.043, 0, edge, -0.027, 0.012);
-    box(coverHinge, inlay, width - 0.37, 0.020, 0.028, 0, edge + (side < 0 ? 0.08 : -0.08), -lidDepth - 0.125);
-    for (const hand of [-1, 1]) {
-      const badge = mesh(crestGeometry, inlay, coverHinge, hand * (width / 2 - 0.34),
-        edge + (side < 0 ? 0.18 : -0.18), -lidDepth - 0.135);
-      badge.rotation.set(0, Math.PI, side * hand * Math.PI / 2);
-    }
-  }
-
-  // Brass hinge barrels stay on the rear rim throughout the swing.
-  for (const x of [-2.72, 2.72]) {
-    cylinder(caseParts, bronze, 0.116, 0.72, x, coverHinge.position.y, coverHinge.position.z, 'x');
-    castBlock(caseParts, bronze, 0.43, 0.36, 0.075, x, -0.028, coverHinge.position.z - 0.058, 0.023);
-    castBlock(coverHinge, brass, 0.41, 0.51, 0.075, x, 0.31, -0.049, 0.019);
-    for (const dx of [-0.12, 0.12]) {
-      mesh(rivetGeometry, bronze, coverHinge, x + dx, 0.45, 0.001);
-    }
-  }
-
-  // A maker's seal sits below the recessed instrument panel.
-  const seal = new THREE.Group();
-  seal.position.set(0, 2.15, insideZ + 0.067);
-  coverHinge.add(seal);
-  cylinder(seal, bronze, 0.42, 0.085, 0, 0, 0, 'z');
-  mesh(new THREE.TorusGeometry(0.346, 0.017, 8, 44), brass, seal, 0, 0, 0.049);
-  const crest = mesh(crestGeometry, inlay, seal, 0, 0, 0.053);
-  crest.scale.setScalar(2.55);
-  for (const x of [-2.06, 2.06]) {
-    castBlock(coverHinge, frame, 2.57, 0.045, 0.090, x, 2.15, insideZ + 0.070, 0.012);
-    box(coverHinge, inlay, 2.43, 0.013, 0.016, x, 2.15, insideZ + 0.122);
+const coverBounds = boxCorners({
+  min: new THREE.Vector3(-4.72, -0.04, -4.72),
+  max: new THREE.Vector3(4.72, lidDepth + 0.25, 4.72),
+});
+const roof = new THREE.Group();
+roof.rotation.x = -Math.PI / 2;
+roof.position.y = lidDepth + 0.13;
+cover.add(roof);
+castBlock(roof, frame, lidSpan, lidSpan, 0.22, 0, 0, -0.10, 0.057);
+for (const side of [-1, 1]) {
+  const edge = side * (lidSpan / 2 - 0.145);
+  castBlock(cover, frame, 0.23, lidDepth, lidSpan, edge, lidDepth / 2, 0, 0.036);
+  castBlock(cover, frame, lidSpan - 0.46, lidDepth, 0.23, 0, lidDepth / 2, edge, 0.036);
+  for (const reach of [Math.abs(edge) - 0.14, Math.abs(edge) - 0.21]) {
+    box(roof, inlay, lidSpan - 0.48, 0.018, 0.022, 0, side * reach, 0.029);
+    box(roof, inlay, 0.018, lidSpan - 0.48, 0.022, side * reach, 0, 0.029);
   }
 }
-buildLidShell();
-
-const coverCartouche = new THREE.Group();
-coverCartouche.position.set(0, lidSpan / 2, -lidDepth - 0.136);
-coverCartouche.rotation.x = Math.PI;
-coverHinge.add(coverCartouche);
-castBlock(coverCartouche, bronze, 3.15, 0.79, 0.035, 0, 0, 0.012, 0.013);
-castBlock(coverCartouche, enamelBlue, 3.05, 0.69, 0.032, 0, 0, 0.035, 0.011);
-mesh(crestGeometry, brass, coverCartouche, -1.20, 0, 0.056).scale.setScalar(1.25);
-engraving(coverCartouche, 2.40, 0.48, 0.15, 0, 0.055, { italic: true })('Steam Tycoon');
 const dedication = new THREE.Group();
-dedication.position.set(0, -0.47, 0.015);
-coverCartouche.add(dedication);
-castBlock(dedication, bronze, 3.30, 0.37, 0.038, 0, 0, 0, 0.014);
-castBlock(dedication, enamelBlue, 3.19, 0.29, 0.033, 0, 0, 0.022, 0.010);
-engraving(dedication, 3.03, 0.227, 0, 0, 0.046, { italic: true })('For the keeper of the little engines');
-dedication.scale.y = 0.01;
-dedication.visible = false;
-const ward = mesh(new THREE.TorusGeometry(0.144, 0.018, 8, 32), brass, coverCartouche, 1.26, 0, 0.063);
-mesh(crestGeometry, brass, ward, 0, 0, 0.018).scale.setScalar(0.72);
-const coverLock = new THREE.Group();
-coverLock.position.set(0, lidSpan - 0.50, -lidDepth - 0.137);
-coverLock.rotation.x = Math.PI;
-coverHinge.add(coverLock);
-castBlock(coverLock, bronze, 1.92, 0.341, 0.063, 0.06, 0, 0, 0.025);
-castBlock(coverLock, brass, 1.81, 0.284, 0.042, 0.06, 0, 0.039, 0.016);
-const coverKnob = new THREE.Group();
-coverKnob.position.set(-0.632, 0, 0.069);
-coverLock.add(coverKnob);
-cylinder(coverKnob, bronze, 0.112, 0.055, 0, 0, 0, 'z');
-castBlock(coverKnob, brass, 0.156, 0.051, 0.032, 0, 0, 0.04, 0.014);
-const coverHint = engraving(coverLock, 1.22, 0.202, 0.211, 0, 0.064, { color: '#2c2018' });
-const coverBounds = boxCorners({
-  min: new THREE.Vector3(-4.44, -0.14, -lidDepth - 0.28),
-  max: new THREE.Vector3(4.44, lidSpan + 0.035, 0.045),
+dedication.position.set(0, -1.17, 0.041);
+roof.add(dedication);
+castBlock(dedication, bronze, 3.47, 0.39, 0.040, 0, 0, 0.020, 0.016);
+castBlock(dedication, enamelBlue, 3.32, 0.29, 0.025, 0, 0, 0.046, 0.012);
+engraving(dedication, 3.03, 0.21, 0, 0, 0.071, { italic: true })('For the keeper of the little engines');
+const sealReadout = engraving(roof, 3.63, 0.32, 0, -2.90, 0.055);
+
+const locks = Array.from({ length: 4 }, (_, index) => {
+  const assembly = new THREE.Group();
+  assembly.rotation.y = index * Math.PI / 2;
+  cover.add(assembly);
+  const mount = new THREE.Group();
+  mount.position.set(0, 0.76, lidSpan / 2 + 0.03);
+  mount.userData.coverLock = index;
+  assembly.add(mount);
+  castBlock(mount, bronze, 3.23, 0.31, 0.074, 0, 0, 0.01, 0.042);
+  const dogs = [-1, 1].map(side => {
+    castBlock(mount, brass, 0.29, 0.45, 0.11, side * 1.40, -0.025, 0.049, 0.032);
+    mesh(rivetGeometry, inlay, mount, side * 1.40, -0.025, 0.126).scale.setScalar(1.32);
+    return castBlock(mount, inlay, 0.89, 0.115, 0.066, side * 0.95, 0, 0.118, 0.018);
+  });
+  const knob = new THREE.Group();
+  knob.position.z = 0.14;
+  mount.add(knob);
+  cylinder(knob, bronze, 0.602, 0.145, 0, 0, 0, 'z');
+  cylinder(knob, enamelBlue, 0.544, 0.057, 0, 0, 0.078, 'z');
+  mesh(new THREE.TorusGeometry(0.564, 0.027, 8, 36), inlay, knob, 0, 0, 0.111);
+  mesh(new THREE.TorusGeometry(0.483, 0.012, 6, 32), brass, knob, 0, 0, 0.112);
+  for (let ray = 0; ray < 16; ray++) {
+    const angle = ray * Math.PI / 8;
+    const blade = castBlock(knob, brass, 0.21 + 0.048 * (ray % 2), 0.033, 0.020,
+      Math.cos(angle) * 0.321, Math.sin(angle) * 0.321, 0.124, 0.011);
+    blade.rotation.z = angle;
+  }
+  cylinder(knob, inlay, 0.243, 0.047, 0, 0, 0.137, 'z');
+  const fleur = mesh(crestGeometry, brass, knob, 0, 0, 0.164);
+  fleur.scale.setScalar(1.91);
+  mesh(rivetGeometry, brass, knob, 0, 0.542, 0.149).scale.setScalar(1.22);
+  return { mount, knob, dogs, released: false, travel: 0 };
 });
-let claspTravel = coverState === 'open' ? 1 : 0;
-let revealChimed = false;
-let unfolding = coverState === 'open' ? 1 : 0;
+
+let opening = 0;
+let introTurn = 0;
+let introTarget = 0;
 const boardHelp = stage.getAttribute('aria-label');
 
-function poseCover() {
-  const swing = THREE.MathUtils.smoothstep(unfolding, 0, 1);
-  coverHinge.rotation.x = THREE.MathUtils.lerp(Math.PI / 2, openLidAngle, swing);
-  const released = THREE.MathUtils.smoothstep(claspTravel, 0, 1);
-  coverKnob.rotation.z = released * Math.PI / 2;
-  ward.rotation.z = released * Math.PI;
-  dedication.visible = released > 0.36;
-  dedication.scale.y = Math.max(0.01, THREE.MathUtils.smoothstep(released, 0.36, 1));
-  dedication.position.y = -0.31 - released * 0.23;
-}
-
 function updateOpeningHint() {
-  const locked = coverState === 'locked';
-  coverHint(locked ? 'Turn the seal' : 'Lift the lid');
-  openBoxButton.textContent = locked ? 'Turn the seal' : 'Lift the lid';
+  const remaining = locks.filter(lock => !lock.released).length;
+  const hint = remaining ? `Turn the sun seals · ${4 - remaining}/4` : 'Lift the lid';
+  sealReadout(hint);
+  openBoxButton.textContent = hint;
   openBoxButton.disabled = coverState === 'opening';
   openBoxButton.hidden = coverState === 'open';
   stage.setAttribute('aria-label', coverState === 'open' ? boardHelp
-    : locked ? 'A sealed gift box. Turn the brass seal or press Enter.'
-      : 'For the keeper of the little engines. Click the lid or press Enter to lift it.');
+    : `${hint}. Click the brass medallion or press Enter.`);
 }
 
-function advanceCover() {
+function advanceCover(index = locks.findIndex(lock => !lock.released)) {
   if (coverState === 'locked') {
-    coverState = 'unlatched';
+    const lock = locks[index];
+    if (!lock || lock.released) return;
+    lock.released = true;
     playSound('latch');
-    poseCover();
+    if (locks.every(item => item.released)) {
+      coverState = 'unlatched';
+      dedication.visible = true;
+      playSound('chime');
+    } else {
+      const next = Array.from({length: 4}, (_, i) => index + i + 1).find(i => !locks[i % 4].released);
+      const offset = next * 90 - introTarget;
+      introTarget += THREE.MathUtils.euclideanModulo(offset + 180, 360) - 180;
+    }
   } else if (coverState === 'unlatched') {
     coverState = 'opening';
+    introTarget = Math.round(introTurn / 360) * 360;
     playSound('latch');
   }
   updateOpeningHint();
 }
 
-openBoxButton.addEventListener('click', advanceCover);
-poseCover();
+openBoxButton.addEventListener('click', () => advanceCover());
+dedication.visible = false;
 updateOpeningHint();
 
 function animateCover(elapsed) {
-  if ((coverState === 'unlatched' || coverState === 'opening') && claspTravel < 1) {
-    claspTravel = Math.min(1, claspTravel + elapsed * 2.2);
-    poseCover();
-    if (claspTravel === 1 && coverState === 'unlatched') playSound('chime');
+  if (coverState === 'open') return;
+  const movingCamera = Math.abs(introTarget - introTurn) > 0.05;
+  if (movingCamera) {
+    introTurn = THREE.MathUtils.damp(introTurn, introTarget, 5, elapsed);
+    orbitYaw = introTurn;
+    aimCamera();
   }
-  if (coverState !== 'opening') return;
-  unfolding = Math.min(1, unfolding + elapsed * 0.69);
-  poseCover();
-  if (unfolding >= 0.53 && !revealChimed) {
-    revealChimed = true;
-    playSound('chime');
+  for (const lock of locks) {
+    if (!lock.released || lock.travel === 1) continue;
+    lock.travel = Math.min(1, lock.travel + elapsed * 3.2);
+    const turn = THREE.MathUtils.smoothstep(lock.travel, 0, 1);
+    lock.knob.rotation.z = -turn * Math.PI / 2;
+    for (const [i, dog] of lock.dogs.entries()) dog.position.x = (i ? 1 : -1) * (0.95 - turn * 0.29);
   }
-  if (unfolding === 1) {
-    coverState = 'open';
-    progress.opened = true;
-    recordProgress();
-    updateOpeningHint();
+  if (coverState === 'opening') {
+    opening = Math.min(1, opening + elapsed * 0.54);
+    const lift = THREE.MathUtils.smoothstep(opening, 0, 0.58);
+    const depart = THREE.MathUtils.smoothstep(opening, 0.43, 1);
+    cover.position.set(depart * 21, 0.13 + lift * 5.2 + depart * 6.8, -depart * 4.0);
+    if (opening === 1) {
+      cover.removeFromParent();
+      coverState = 'open';
+      progress.liftOffSeen = true;
+      orbitYaw = 0;
+      aimCamera();
+      if (savedIndex >= 0 && savedIndex !== tutorialIndex) {
+        levelSelect.value = String(savedIndex);
+        selectLevel(savedIndex);
+      } else {
+        recordProgress();
+      }
+      updateOpeningHint();
+      playSound('chime');
+    }
   }
-  resize();
+  if (movingCamera || opening > 0) resize();
 }
+
 
 const tutorialMarker = new THREE.LineLoop(
   new THREE.BufferGeometry().setFromPoints([
@@ -3710,8 +3718,10 @@ titleRelief.anisotropy = titleColor.anisotropy;
 const titleFinish = new THREE.MeshStandardMaterial({
   map: titleColor, bumpMap: titleRelief, bumpScale: 0.024, roughness: 0.61, metalness: 0.10,
 });
-const titlePanel = mesh(new THREE.PlaneGeometry(7.06, 1.565), titleFinish, lid, 0, 1.770, 0.105);
+const titlePanel = mesh(new THREE.PlaneGeometry(6.05, 1.565), titleFinish, lid, 0, 1.770, 0.105);
 titlePanel.castShadow = false;
+const roofTitle = mesh(new THREE.PlaneGeometry(6.48, 1.23), titleFinish, roof, 0, 0, 0.065);
+roofTitle.castShadow = false;
 
 const inHandStamp = engraving(lid, 1.85, 0.20, -2.33, 0.23, 0.127);
 const ivoryPlate = material(0xdab684, 0.22, 0.48);
@@ -3731,6 +3741,25 @@ lidNeedle.scale.setScalar(0.77);
 dial.add(lidNeedle);
 box(lidNeedle, gaugeRed, 0.039, 0.335, 0.012, 0, 0.121, 0.068);
 cylinder(dial, brass, 0.036, 0.025, 0, 0, 0.063, 'z');
+const fascia = new THREE.Group();
+fascia.position.set(0, -0.525, 4.37);
+fascia.rotation.x = -0.25;
+caseParts.add(fascia);
+castBlock(fascia, frame, 2.6, 0.56, 0.14, 0, 0, -0.013, 0.055);
+castBlock(fascia, bronze, 2.47, 0.46, 0.042, 0, 0, 0.064, 0.023);
+cylinder(fascia, brass, 0.244, 0.055, 0, 0, 0.098, 'z');
+mesh(new THREE.CircleGeometry(0.213, 36), gaugeFace, fascia, 0, 0, 0.128);
+const fasciaNeedle = new THREE.Group();
+fasciaNeedle.scale.setScalar(0.57);
+fasciaNeedle.position.z = 0.142;
+fascia.add(fasciaNeedle);
+box(fasciaNeedle, gaugeRed, 0.041, 0.31, 0.013, 0, 0.117, 0);
+cylinder(fascia, bronze, 0.033, 0.032, 0, 0, 0.154, 'z');
+for (const x of [-0.84, 0.84]) {
+  const crest = mesh(crestGeometry, inlay, fascia, x, 0, 0.090);
+  crest.rotation.z = Math.sign(x) * -Math.PI / 2;
+  crest.scale.setScalar(1.13);
+}
 const pressureStamp = engraving(lid, 1.25, 0.195, 2.76, 0.232, 0.12);
 const ledgerMark = mesh(rivetGeometry, collarActive, lid, -3.23, -0.085, 0.136);
 ledgerMark.scale.setScalar(0.80);
@@ -3808,7 +3837,7 @@ function toggleLidInspection() {
   aimCamera();
   resize();
 }
-castKey(-2.76, 0.63, 1.12, () => inspectingLid ? 'Return' : 'Inspect lid', toggleLidInspection);
+castKey(-2.76, 0.63, 1.12, () => inspectingLid ? 'Return' : 'Inspect panel', toggleLidInspection);
 castKey(-1.77, 0.63, 0.40, () => '‹', () => moveBoard(-1), () => levelSelect.selectedIndex === 0);
 castKey(1.77, 0.63, 0.40, () => '›', () => moveBoard(1), () => levelSelect.selectedIndex === levelSelect.options.length - 1);
 
