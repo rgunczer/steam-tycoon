@@ -2817,10 +2817,10 @@ function emitSteam(outlet, kind) {
   particle.sprite.visible = true;
 }
 
-function animateBoiler(dt) {
+function animateBoiler(dt, showSteam) {
   const pressure = THREE.MathUtils.clamp(level.pressure / 100, 0, 1);
-  boilerCycle = (boilerCycle + dt * (0.34 + pressure * 0.34)) % 1;
-  const opening = powered ? 0 : THREE.MathUtils.smoothstep(boilerCycle, 0.55, 0.70)
+  boilerCycle = showSteam ? (boilerCycle + dt * (0.34 + pressure * 0.34)) % 1 : 0;
+  const opening = THREE.MathUtils.smoothstep(boilerCycle, 0.55, 0.70)
     * (1 - THREE.MathUtils.smoothstep(boilerCycle, 0.85, 0.99));
   if (level.valve) {
     const angle = pressure * 1.75 + opening * (0.30 + pressure * 0.28);
@@ -2839,7 +2839,9 @@ function animateBoiler(dt) {
 }
 
 function animateSteam(dt, elapsed) {
-  animateBoiler(Math.min(elapsed, 0.20));
+  // Keep atmospheric steam clear of the completion glints.
+  const showAtmosphere = !celebration && (!powered || level.completionTime >= 1.65);
+  animateBoiler(Math.min(elapsed, 0.20), showAtmosphere);
   const jetInterval = 0.047;
   const ventInterval = 0.089;
   jetClock += dt;
@@ -2854,8 +2856,7 @@ function animateSteam(dt, elapsed) {
       if (isJet ? jetReady : ventReady) emitSteam(outlet, isJet ? 'jet' : 'vent');
     }
   }
-  // Leave the board clear for the completion glints, then let sealed joints breathe again.
-  if (warmJoints.length && !celebration && (!powered || level.completionTime >= 1.65)) {
+  if (warmJoints.length && showAtmosphere) {
     nextWisp -= dt;
     if (nextWisp <= 0) {
       nextWisp = 0.85 + Math.random() * 1.5;
